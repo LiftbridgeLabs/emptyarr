@@ -11,7 +11,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>emptyarr</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+<link rel="icon" type="image/png" href="/static/favicon.png">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -1873,9 +1873,11 @@ async function loadProviderStatus(force = false) {
     }
     const rows = configured.map(([key, s]) => {
       const label = labels[key] || key;
+      const sourceHtml = s.source_name ? `<span style="font-size:10px;color:var(--muted);">from ${h(s.source_name)}</span>` : '';
       if (!s.ok) {
         return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
           <span style="font-size:12px;font-weight:600;color:var(--bright);min-width:110px;">${label}</span>
+          ${sourceHtml}
           <span class="badge error">✗ ${h(s.error)}</span>
         </div>`;
       }
@@ -1887,6 +1889,7 @@ async function loadProviderStatus(force = false) {
       }
       return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
         <span style="font-size:12px;font-weight:600;color:var(--bright);min-width:110px;">${label}</span>
+        ${sourceHtml}
         <span class="badge success">✓ connected</span>
         <span style="font-size:11px;color:var(--text2);">${h(s.username || '')}</span>
         ${expiryHtml}

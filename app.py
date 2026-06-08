@@ -5,7 +5,7 @@ import secrets
 import threading
 import urllib.parse
 import yaml
-from flask import Flask, jsonify, render_template, request, redirect, url_for, session
+from flask import Flask, jsonify, render_template, request, redirect, url_for, session, send_from_directory
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -148,6 +148,11 @@ def _build_ui_instances():
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.route("/favicon.ico", methods=["GET"])
+def favicon():
+    return send_from_directory(app.static_folder, "favicon.png", mimetype="image/png")
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -517,10 +522,20 @@ def api_config_load():
 def api_providers_status():
     """Return account status for all configured providers."""
     result = {}
-    for provider in _PROVIDER_ENV_KEYS:
+    for provider, env_name in _PROVIDER_ENV_KEYS.items():
         key = get_api_key(provider, config=config)
         if key:
-            result[provider] = get_account_status(provider, key)
+            status = get_account_status(provider, key)
+            if os.environ.get(env_name, ""):
+                status["source"] = "env"
+                status["source_name"] = env_name
+            elif config.providers.get(provider, {}).get("api_key", ""):
+                status["source"] = "config"
+                status["source_name"] = "config.yml"
+            else:
+                status["source"] = "path"
+                status["source_name"] = "path provider check"
+            result[provider] = status
         else:
             result[provider] = {"ok": False, "error": "no_key"}
     return jsonify(result)
