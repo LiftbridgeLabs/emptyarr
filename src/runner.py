@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -191,6 +192,29 @@ def _breakdown(items: list) -> str:
     return ", ".join(parts) if parts else f"{len(items)} item(s)"
 
 
+def _trash_item_key(item: Dict) -> tuple:
+    return (
+        item.get("media_type_id", ""),
+        item.get("type", ""),
+        item.get("title", ""),
+        item.get("year", ""),
+        item.get("index", ""),
+        item.get("parent_title", ""),
+        item.get("parent_index", ""),
+        item.get("grandparent_title", ""),
+    )
+
+
+def _items_removed(before: List[Dict], after: List[Dict]) -> List[Dict]:
+    after_keys = {_trash_item_key(item) for item in after}
+    return [item for item in before if _trash_item_key(item) not in after_keys]
+
+
+def _headline_count(items: List[Dict]) -> int:
+    episode_count = sum(1 for i in items if i.get("type") == "episode")
+    return episode_count if episode_count > 0 else len(items)
+
+
 def _handle_checks_failed(config, instance, library, all_checks, failed):
     failed_names = ", ".join(failed.keys())
     msg = f"Checks failed ({failed_names}) — trash empty skipped"
@@ -225,20 +249,26 @@ def _handle_empty_failed(config, instance, library, result, all_checks, trash_it
 
 
 def _handle_empty_success(config, instance, library, trash_items, all_checks,
-                          headline_count, trash_count):
-    if trash_count > 0:
-        msg = f"Emptied {_breakdown(trash_items)} from trash"
+                          removed_items):
+    trash_count = len(trash_items)
+    removed_count = len(removed_items)
+
+    if removed_count > 0:
+        msg = f"Emptied {_breakdown(removed_items)} from trash"
+    elif trash_count > 0:
+        msg = (f"emptyTrash completed, but Plex still reports "
+               f"{_breakdown(trash_items)} in trash")
     else:
         msg = "Trash was already empty"
     logger.info(f"[{instance.name} / {library.name}] {msg}")
     _record(instance.name, library.name, "success", all_checks, msg,
-            trash_items if trash_items else [],
-            removed_count=headline_count if trash_count > 0 else 0)
-    if trash_count > 0 and config.notify.on_emptied and config.discord_webhook:
+            removed_items if removed_items else [],
+            removed_count=_headline_count(removed_items))
+    if removed_count > 0 and config.notify.on_emptied and config.discord_webhook:
         notifications.notify_emptied(config.discord_webhook,
                                      instance.name, library.name,
-                                     trash_items, all_checks,
-                                     breakdown=_breakdown(trash_items))
+                                     removed_items, all_checks,
+                                     breakdown=_breakdown(removed_items))
     elif trash_count == 0 and config.notify.on_clean and config.discord_webhook:
         notifications.notify_clean(config.discord_webhook,
                                    instance.name, library.name, all_checks)
@@ -298,11 +328,10 @@ def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
 
     trash_items    = plex.get_trash_items(section_id)
     trash_count    = len(trash_items)
-    episode_count  = sum(1 for i in trash_items if i.get("type") == "episode")
-    headline_count = episode_count if episode_count > 0 else trash_count
 
     if dry_run:
-        _handle_dry_run(instance, library, trash_items, all_checks, headline_count)
+        _handle_dry_run(instance, library, trash_items, all_checks,
+                        _headline_count(trash_items))
         return
 
     logger.info(f"[{instance.name} / {library.name}] "
@@ -317,5 +346,9 @@ def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
         _handle_empty_failed(config, instance, library, result, all_checks, trash_items)
         return
 
+    time.sleep(2)
+    remaining_items = plex.get_trash_items(section_id)
+    removed_items = _items_removed(trash_items, remaining_items)
+
     _handle_empty_success(config, instance, library, trash_items, all_checks,
-                          headline_count, trash_count)
+                          removed_items)
