@@ -1104,6 +1104,7 @@ async function loadSettings() {
       name:      inst.name || '',
       url:       inst.url  || '',
       token:     inst.token || '',
+      machine_id: inst.machine_id || '',
       libraries: (inst.libraries || []).map(lib => ({
         name:  lib.name  || '',
         type:  lib.type  || 'physical',
@@ -1649,29 +1650,97 @@ function uniqueInstanceName(base, existing) {
   return name;
 }
 
+function samePlexUrl(left, right) {
+  const normalize = value => String(value || '').trim().replace(/\/+$/,'').toLowerCase();
+  return normalize(left) && normalize(left) === normalize(right);
+}
+
+function samePlexLibrary(left, right) {
+  if (left.section_id != null && right.id != null) {
+    return String(left.section_id) === String(right.id);
+  }
+  return String(left.name || '').trim().toLowerCase() ===
+         String(right.title || '').trim().toLowerCase();
+}
+
+function mergeConfiguredInstance(target, duplicate) {
+  target.libraries = target.libraries || [];
+  (duplicate.libraries || []).forEach(duplicateLibrary => {
+    let library = (target.libraries || []).find(existing => {
+      if (existing.section_id != null && duplicateLibrary.section_id != null) {
+        return String(existing.section_id) === String(duplicateLibrary.section_id);
+      }
+      return String(existing.name || '').trim().toLowerCase() ===
+             String(duplicateLibrary.name || '').trim().toLowerCase();
+    });
+    if (!library) {
+      target.libraries.push(duplicateLibrary);
+      return;
+    }
+    library.paths = library.paths || [];
+    (duplicateLibrary.paths || []).forEach(path => {
+      const exists = library.paths.some(existing =>
+        existing.path === path.path && existing.type === path.type
+      );
+      if (!exists) library.paths.push(path);
+    });
+  });
+}
+
 function importDiscoveredPlex(target) {
   const destination = target === 'wizard' ? _wizData.instances : _settingsData.instances;
   const selected = [...document.querySelectorAll(`#plex-discovery-${target} [data-plex-server]:checked`)]
     .map(input => _plexDiscovered[Number(input.dataset.plexServer)]);
+  let addedServers = 0, addedLibraries = 0, refreshedServers = 0;
   selected.forEach(server => {
-    destination.push({
-      name: uniqueInstanceName(server.name, destination),
-      url: server.url,
-      token: server.token,
-      libraries: server.libraries.map(library => ({
+    const matches = destination.filter(candidate =>
+      (candidate.machine_id && candidate.machine_id === server.id) ||
+      (!candidate.machine_id && samePlexUrl(candidate.url, server.url))
+    );
+    let instance = matches[0];
+    matches.slice(1).forEach(duplicate => {
+      mergeConfiguredInstance(instance, duplicate);
+      const duplicateIndex = destination.indexOf(duplicate);
+      if (duplicateIndex >= 0) destination.splice(duplicateIndex, 1);
+    });
+    if (!instance) {
+      instance = {
+        name: uniqueInstanceName(server.name, destination),
+        machine_id: server.id,
+        url: server.url,
+        token: server.token,
+        libraries: [],
+      };
+      destination.push(instance);
+      addedServers++;
+    } else {
+      instance.machine_id = server.id;
+      instance.url = server.url;
+      instance.token = server.token;
+      refreshedServers++;
+    }
+    server.libraries.forEach(library => {
+      if (instance.libraries.some(existing => samePlexLibrary(existing, library))) return;
+      instance.libraries.push({
         name: library.title,
         section_id: library.id,
         type: 'physical',
         cron: '0 * * * *',
         paths: [],
-      })),
+      });
+      addedLibraries++;
     });
   });
   if (target === 'wizard') renderWizInstList();
   else renderSettingsInstances();
   _plexDiscovered = [];
   document.getElementById(`plex-discovery-${target}`).innerHTML = '';
-  toast(`Imported ${selected.length} Plex server${selected.length === 1 ? '' : 's'}`, 'pass');
+  const summary = addedServers
+    ? `Added ${addedServers} server${addedServers === 1 ? '' : 's'} and ${addedLibraries} libraries`
+    : refreshedServers
+      ? `Refreshed ${refreshedServers} server${refreshedServers === 1 ? '' : 's'}; ${addedLibraries} new libraries`
+      : 'Nothing new to import';
+  toast(summary, addedServers || addedLibraries ? 'pass' : 'warn');
 }
 function wizAddInst() { document.getElementById('wi-name').value=''; document.getElementById('wi-url').value=''; document.getElementById('wi-token').value=''; document.getElementById('wi-hint').textContent='Token used to verify connection and fetch library names.'; document.getElementById('wi-hint').className='form-hint'; document.getElementById('wi-libs').style.display='none'; document.getElementById('wi-save').style.display='none'; document.getElementById('wiz-inst-form').style.display='block'; }
 async function wizTestPlex() {

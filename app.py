@@ -160,6 +160,7 @@ def _validate_raw_config(raw: dict) -> AppConfig:
     if not isinstance(instances, list):
         raise ValueError("plex_instances must be a list")
     instance_names = set()
+    machine_ids = set()
     for instance in instances:
         if not isinstance(instance, dict):
             raise ValueError("Every Plex instance must be an object")
@@ -170,6 +171,11 @@ def _validate_raw_config(raw: dict) -> AppConfig:
         if name in instance_names:
             raise ValueError(f"Duplicate Plex instance name: {name}")
         instance_names.add(name)
+        machine_id = str(instance.get("machine_id", "")).strip()
+        if machine_id:
+            if machine_id in machine_ids:
+                raise ValueError(f"Duplicate Plex server identifier: {machine_id}")
+            machine_ids.add(machine_id)
         ok, reason = _is_valid_plex_url(url)
         if not ok:
             raise ValueError(f"{name}: {reason}")
@@ -694,6 +700,8 @@ def _build_instance_cfg(inst: dict, store_tokens: bool, env_vars_needed: list) -
         "name":      inst_name,
         "url":       inst.get("url", ""),
         "token":     token if store_tokens else "",
+        **({"machine_id": str(inst["machine_id"])}
+           if inst.get("machine_id") else {}),
         "libraries": [_build_library_cfg(lib, env_vars_needed) for lib in inst.get("libraries", [])],
     }
 

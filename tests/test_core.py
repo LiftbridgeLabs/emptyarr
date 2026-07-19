@@ -170,6 +170,26 @@ class LiveConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "at least one"):
             app._validate_raw_config(raw)
 
+    def test_duplicate_plex_machine_identifier_is_rejected(self):
+        raw = {
+            "plex_instances": [
+                {
+                    "name": "Plex",
+                    "machine_id": "server-123",
+                    "url": "http://plex:32400",
+                    "libraries": [],
+                },
+                {
+                    "name": "Plex Backup",
+                    "machine_id": "server-123",
+                    "url": "http://plex-backup:32400",
+                    "libraries": [],
+                },
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "Duplicate Plex server identifier"):
+            app._validate_raw_config(raw)
+
     def test_live_apply_reconciles_jobs_and_removed_libraries(self):
         directory = str(Path("tests").resolve())
         old_path = app.CONFIG_PATH

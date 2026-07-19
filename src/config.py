@@ -44,6 +44,7 @@ class PlexInstanceConfig:
     url: str
     token: str
     libraries: List[LibraryConfig]
+    machine_id: Optional[str] = None
 
 
 # ── Notification config ───────────────────────────────────────────────────────
@@ -153,6 +154,7 @@ def _load_instance(raw: dict) -> PlexInstanceConfig:
         url       = url,
         token     = token,
         libraries = [_load_library(lib) for lib in raw.get("libraries", [])],
+        machine_id = raw.get("machine_id"),
     )
 
 
