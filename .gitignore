@@ -13,3 +13,6 @@ venv/
 .vscode/
 .idea/
 *.swp
+
+# Test runtime scratch
+tests/.runtime-*

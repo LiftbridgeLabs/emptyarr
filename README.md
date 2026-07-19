@@ -70,13 +70,19 @@ docker build -t emptyarr:latest .
 
 ### First run
 
-Open `http://YOUR_IP:8222` and run through the setup wizard. Takes a few minutes.
+Open `http://YOUR_IP:8222` and run through the setup wizard. You can connect
+your Plex account in the browser to discover servers and libraries automatically;
+emptyarr never receives your Plex password. Manual URL/token setup remains
+available as a fallback.
 
 ---
 
 ## Configuration
 
-Config lives at `/app/data/config.yml` (your host's data directory). The Settings page in the UI can edit everything — you shouldn't need to touch the file directly.
+Config lives at `/app/data/config.yml` (your host's data directory). The Settings
+page can validate and apply changes immediately, including additions, removals,
+schedules, and paths. Restart only after changing Docker environment variables
+or volume mappings.
 
 ### Library types
 
@@ -105,6 +111,10 @@ notify:
   on_error: true
   on_clean: false
   on_skip: false
+
+# Optional. Plex Clean Bundles is server-wide, so it is disabled by default.
+# Enable only if you intentionally want it before each library trash operation.
+clean_bundles_before_empty: false
 
 plex_instances:
   - name: My Plex
@@ -153,7 +163,7 @@ plex_instances:
 
 ## Auth
 
-Settings → Security. Enter username and password, save. Takes effect immediately, no restart needed. Stored as a SHA-256 hash in config.yml — never plaintext.
+Settings → Security. Enter username and password, save. Takes effect immediately, no restart needed. Stored as a bcrypt hash in config.yml — never plaintext.
 
 You can also set `EMPTYARR_USERNAME` and `EMPTYARR_PASSWORD` env vars instead (these take priority).
 
@@ -184,7 +194,9 @@ docker build -t emptyarr:latest .
 
 ## Privacy
 
-emptyarr only talks to: your Plex server, debrid provider APIs if you configure an API key, and your Discord webhook. That's it. No telemetry, no analytics, no external calls. See [PRIVACY.md](PRIVACY.md).
+emptyarr talks to your Plex server, Plex's authorization/discovery service when
+you choose account linking, configured debrid provider APIs, and your Discord
+webhook. It sends no telemetry or analytics. See [PRIVACY.md](PRIVACY.md).
 
 ---
 

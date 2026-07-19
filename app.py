@@ -1,22 +1,28 @@
 import logging
 import logging.handlers
+import ipaddress
 import os
 import secrets
 import threading
 import urllib.parse
 import yaml
-from flask import Flask, jsonify, render_template, request, redirect, url_for, session, send_from_directory
+from functools import wraps
+from flask import (Flask, jsonify, render_template, request, redirect, url_for,
+                   session, send_from_directory)
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from src.config import load_config, AppConfig, PlexInstanceConfig, LibraryConfig
+from src.config import (load_config, parse_config, AppConfig,
+                        PlexInstanceConfig, LibraryConfig)
 from src.plex_client import PlexClient
 from src.auth import require_auth, auth_enabled, check_credentials, is_authenticated, hash_password, is_locked_out
 from src import runner
 from src.runner import get_scheduling_enabled, set_scheduling_enabled
 from src.providers import get_account_status, get_api_key
 from src.providers import _ENV_KEYS as _PROVIDER_ENV_KEYS
+from src.storage import atomic_write_yaml
+from src import plex_auth
 
 LOG_DIR  = os.environ.get("LOG_DIR", "data/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -47,7 +53,13 @@ logger = logging.getLogger("emptyarr")
 
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "data/config.yml")
-config: AppConfig = load_config(CONFIG_PATH)
+CONFIG_LOAD_ERROR = ""
+try:
+    config: AppConfig = load_config(CONFIG_PATH)
+except Exception as exc:
+    CONFIG_LOAD_ERROR = str(exc)
+    logger.exception("Configuration could not be loaded; starting in recovery mode")
+    config = AppConfig(instances=[], config_missing=True)
 logging.getLogger().setLevel(config.log_level.upper())
 
 plex_clients: dict[str, PlexClient] = {
@@ -69,6 +81,8 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"]   = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 scheduler      = BackgroundScheduler()
 _next_runs: dict = {}
+_runtime_lock = threading.RLock()
+_config_file_lock = threading.Lock()
 
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
@@ -79,10 +93,19 @@ def _job_key(instance_name: str, library_name: str) -> str:
 
 def make_job(inst: PlexInstanceConfig, lib: LibraryConfig):
     def job():
-        plex = plex_clients[inst.name]
-        plex_checks = runner.run_instance_checks(inst, plex)
-        runner.run_library(inst, lib, config, plex, plex_checks=plex_checks)
-        _update_next(inst.name, lib.name)
+        with _runtime_lock:
+            live_config = config
+            live_inst = next((i for i in live_config.instances
+                              if i.name == inst.name), None)
+            live_lib = next((l for l in live_inst.libraries
+                             if l.name == lib.name), None) if live_inst else None
+            plex = plex_clients.get(inst.name)
+        if not live_inst or not live_lib or plex is None:
+            return
+        plex_checks = runner.run_instance_checks(live_inst, plex)
+        runner.run_library(live_inst, live_lib, live_config, plex,
+                           plex_checks=plex_checks)
+        _update_next(live_inst.name, live_lib.name)
     return job
 
 
@@ -96,38 +119,212 @@ def _update_next(instance_name: str, library_name: str):
             _next_runs[key] = nft.isoformat()
 
 
-def _setup_scheduler():
-    for inst in config.instances:
+def _setup_scheduler(new_config: AppConfig = None):
+    target = new_config or config
+    triggers = {}
+    for inst in target.instances:
         for lib in inst.libraries:
-            parts = lib.cron.split()
-            if len(parts) != 5:
-                parts = ["0", "*", "*", "*", "*"]
+            key = _job_key(inst.name, lib.name)
+            triggers[key] = CronTrigger.from_crontab(lib.cron)
+
+    scheduler.remove_all_jobs()
+    _next_runs.clear()
+    for inst in target.instances:
+        for lib in inst.libraries:
             key = _job_key(inst.name, lib.name)
             scheduler.add_job(
                 make_job(inst, lib),
-                CronTrigger(
-                    minute=parts[0], hour=parts[1],
-                    day=parts[2], month=parts[3], day_of_week=parts[4],
-                ),
+                triggers[key],
                 id=key,
                 name=f"{inst.name} / {lib.name}",
                 replace_existing=True,
             )
-    for inst in config.instances:
+    for inst in target.instances:
         for lib in inst.libraries:
             _update_next(inst.name, lib.name)
 
 
-_setup_scheduler()
+try:
+    _setup_scheduler()
+except Exception as exc:
+    CONFIG_LOAD_ERROR = CONFIG_LOAD_ERROR or str(exc)
+    logger.exception("Schedules could not be loaded; starting without jobs")
+    scheduler.remove_all_jobs()
 scheduler.start()
+
+
+def _validate_raw_config(raw: dict) -> AppConfig:
+    if not isinstance(raw, dict):
+        raise ValueError("Configuration must be an object")
+    instances = raw.get("plex_instances", [])
+    if not isinstance(instances, list):
+        raise ValueError("plex_instances must be a list")
+    instance_names = set()
+    for instance in instances:
+        if not isinstance(instance, dict):
+            raise ValueError("Every Plex instance must be an object")
+        name = str(instance.get("name", "")).strip()
+        url = str(instance.get("url", "")).strip()
+        if not name:
+            raise ValueError("Every Plex instance needs a name")
+        if name in instance_names:
+            raise ValueError(f"Duplicate Plex instance name: {name}")
+        instance_names.add(name)
+        ok, reason = _is_valid_plex_url(url)
+        if not ok:
+            raise ValueError(f"{name}: {reason}")
+        library_names = set()
+        libraries = instance.get("libraries", [])
+        if not isinstance(libraries, list):
+            raise ValueError(f"{name}: libraries must be a list")
+        for library in libraries:
+            if not isinstance(library, dict):
+                raise ValueError(f"{name}: every library must be an object")
+            lib_name = str(library.get("name", "")).strip()
+            if not lib_name:
+                raise ValueError(f"{name}: every library needs a name")
+            if lib_name in library_names:
+                raise ValueError(f"{name}: duplicate library: {lib_name}")
+            library_names.add(lib_name)
+            library_type = str(library.get("type", "physical"))
+            if library_type not in {"physical", "debrid", "usenet", "mixed"}:
+                raise ValueError(f"{name} / {lib_name}: invalid library type")
+            CronTrigger.from_crontab(str(library.get("cron", "0 * * * *")))
+            paths = library.get("paths", [])
+            if not isinstance(paths, list):
+                raise ValueError(f"{name} / {lib_name}: paths must be a list")
+            if not paths:
+                raise ValueError(
+                    f"{name} / {lib_name}: configure at least one filesystem path"
+                )
+            for path in paths:
+                if not isinstance(path, dict):
+                    raise ValueError(
+                        f"{name} / {lib_name}: every path must be an object"
+                    )
+                if not str(path.get("path", "")).strip():
+                    raise ValueError(f"{name} / {lib_name}: path cannot be blank")
+                path_type = str(path.get("type", library_type))
+                if path_type not in {"physical", "debrid", "usenet"}:
+                    raise ValueError(
+                        f"{name} / {lib_name}: invalid path type: {path_type}"
+                    )
+                threshold = float(path.get("min_threshold", 90))
+                if not 0 < threshold <= 100:
+                    raise ValueError(
+                        f"{name} / {lib_name}: threshold must be between 1 and 100"
+                    )
+                checks = path.get("provider_checks", [])
+                if not isinstance(checks, list):
+                    raise ValueError(
+                        f"{name} / {lib_name}: provider_checks must be a list"
+                    )
+                for provider in checks:
+                    if not isinstance(provider, dict):
+                        raise ValueError(
+                            f"{name} / {lib_name}: provider check must be an object"
+                        )
+                    provider_type = str(provider.get("type", ""))
+                    if provider_type not in _PROVIDER_ENV_MAP:
+                        raise ValueError(
+                            f"{name} / {lib_name}: unknown provider: {provider_type}"
+                        )
+    return parse_config(raw)
+
+
+def _apply_runtime_config(new_config: AppConfig) -> None:
+    global config, plex_clients, CONFIG_LOAD_ERROR
+    new_clients = {
+        instance.name: PlexClient(instance.url, instance.token)
+        for instance in new_config.instances
+    }
+    with _runtime_lock:
+        old_config = config
+        old_clients = plex_clients
+        try:
+            config = new_config
+            plex_clients = new_clients
+            _setup_scheduler(new_config)
+        except Exception:
+            config = old_config
+            plex_clients = old_clients
+            _setup_scheduler(old_config)
+            raise
+    valid = {
+        (instance.name, library.name)
+        for instance in new_config.instances
+        for library in instance.libraries
+    }
+    runner.prune_runtime_state(valid)
+    logging.getLogger().setLevel(new_config.log_level.upper())
+    CONFIG_LOAD_ERROR = ""
+
+
+def _save_and_apply(raw: dict, runtime_tokens: dict = None) -> AppConfig:
+    parsed = _validate_raw_config(raw)
+    for instance in parsed.instances:
+        if not instance.token and runtime_tokens:
+            instance.token = runtime_tokens.get(instance.name, "")
+    atomic_write_yaml(CONFIG_PATH, raw)
+    _apply_runtime_config(parsed)
+    return parsed
+
+
+def _serialized_config_write(function):
+    @wraps(function)
+    def decorated(*args, **kwargs):
+        with _config_file_lock:
+            return function(*args, **kwargs)
+    return decorated
+
+
+def _csrf_token() -> str:
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+
+@app.before_request
+def protect_state_changes():
+    if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return None
+    if request.endpoint == "login":
+        return None
+    # Non-browser automations authenticate with the API token and are not
+    # susceptible to cookie-based CSRF.
+    if request.headers.get("X-API-Token"):
+        return None
+    expected = session.get("_csrf_token", "")
+    supplied = request.headers.get("X-CSRF-Token", "")
+    if not expected or not supplied or not secrets.compare_digest(expected, supplied):
+        return jsonify({"error": "Invalid or missing CSRF token"}), 403
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; "
+        "form-action 'self'",
+    )
+    return response
 
 
 # ── Template context ──────────────────────────────────────────────────────────
 
 def _build_ui_instances():
+    with _runtime_lock:
+        current_instances = list(config.instances)
     inst_status = runner.get_instance_status()
     result = []
-    for inst in config.instances:
+    for inst in current_instances:
         libs = []
         for lib in inst.libraries:
             key = _job_key(inst.name, lib.name)
@@ -189,6 +386,8 @@ def index():
         config_missing=config.config_missing,
         auth_enabled=auth_enabled(config),
         config=config,
+        csrf_token=_csrf_token(),
+        config_error=CONFIG_LOAD_ERROR,
     )
 
 
@@ -216,8 +415,12 @@ def api_history():
 @require_auth
 def api_checks():
     results = {}
-    for inst in config.instances:
-        plex = plex_clients[inst.name]
+    with _runtime_lock:
+        runtime = [(inst, plex_clients.get(inst.name))
+                   for inst in config.instances]
+    for inst, plex in runtime:
+        if plex is None:
+            continue
         results[inst.name] = runner.run_instance_checks(inst, plex)
     return jsonify(results)
 
@@ -232,14 +435,19 @@ def api_scheduling():
 
 
 def _trigger(instance_name: str, library_name: str, dry_run: bool = False):
-    inst = next((i for i in config.instances if i.name == instance_name), None)
-    lib  = next((l for l in inst.libraries if l.name == library_name), None) if inst else None
+    with _runtime_lock:
+        live_config = config
+        inst = next((i for i in live_config.instances if i.name == instance_name), None)
+        lib = next((l for l in inst.libraries
+                    if l.name == library_name), None) if inst else None
+        plex = plex_clients.get(inst.name) if inst else None
     if not inst or not lib:
         return False
-    plex = plex_clients[inst.name]
+    if plex is None:
+        return False
     def _run():
         plex_checks = runner.run_instance_checks(inst, plex)
-        runner.run_library(inst, lib, config, plex,
+        runner.run_library(inst, lib, live_config, plex,
                            plex_checks=plex_checks, dry_run=dry_run, manual=True)
     threading.Thread(target=_run, daemon=True).start()
     return True
@@ -265,11 +473,16 @@ def api_dryrun_library(instance_name: str, library_name: str):
 @require_auth
 def api_run_all():
     def _run():
-        for inst in config.instances:
-            plex = plex_clients[inst.name]
+        with _runtime_lock:
+            live_config = config
+            runtime = [(inst, plex_clients.get(inst.name))
+                       for inst in live_config.instances]
+        for inst, plex in runtime:
+            if plex is None:
+                continue
             plex_checks = runner.run_instance_checks(inst, plex)
             for lib in inst.libraries:
-                runner.run_library(inst, lib, config, plex,
+                runner.run_library(inst, lib, live_config, plex,
                                    plex_checks=plex_checks, manual=True)
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"status": "triggered"})
@@ -279,11 +492,16 @@ def api_run_all():
 @require_auth
 def api_dryrun_all():
     def _run():
-        for inst in config.instances:
-            plex = plex_clients[inst.name]
+        with _runtime_lock:
+            live_config = config
+            runtime = [(inst, plex_clients.get(inst.name))
+                       for inst in live_config.instances]
+        for inst, plex in runtime:
+            if plex is None:
+                continue
             plex_checks = runner.run_instance_checks(inst, plex)
             for lib in inst.libraries:
-                runner.run_library(inst, lib, config, plex,
+                runner.run_library(inst, lib, live_config, plex,
                                    plex_checks=plex_checks, dry_run=True, manual=True)
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"status": "dry_run_triggered"})
@@ -303,11 +521,22 @@ def _is_valid_plex_url(url: str) -> tuple[bool, str]:
         return False, "Invalid URL"
     if parsed.scheme not in ("http", "https"):
         return False, "URL must use http or https"
+    if not parsed.hostname:
+        return False, "URL must include a hostname"
+    if parsed.username or parsed.password:
+        return False, "Credentials must not be embedded in the URL"
     # Block cloud metadata endpoints (AWS/GCP/Azure instance identity)
     host = parsed.hostname or ""
     _metadata_hosts = {"169.254.169.254", "metadata.google.internal", "fd00:ec2::254"}
     if host in _metadata_hosts:
         return False, "URL targets a cloud metadata address"
+    try:
+        address = ipaddress.ip_address(host)
+        if (address.is_link_local or address.is_multicast or
+                address.is_unspecified or address.is_reserved):
+            return False, "URL targets a non-routable or reserved address"
+    except ValueError:
+        pass
     return True, ""
 
 
@@ -334,6 +563,28 @@ def api_test_plex():
         return jsonify({"ok": False, "error": str(e)})
 
 
+@app.route("/api/plex/auth/start", methods=["POST"])
+@require_auth
+def api_plex_auth_start():
+    """Create a Plex PIN and return the official browser authorization URL."""
+    try:
+        return jsonify({"ok": True, **plex_auth.start_auth()})
+    except Exception as e:
+        logger.warning("Could not start Plex authorization: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
+@app.route("/api/plex/auth/status/<state>", methods=["GET"])
+@require_auth
+def api_plex_auth_status(state: str):
+    """Poll a Plex PIN and discover reachable servers once it is claimed."""
+    try:
+        return jsonify(plex_auth.poll_auth(state))
+    except Exception as e:
+        logger.warning("Could not complete Plex authorization: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
 @app.route("/api/wizard/browse", methods=["POST"])
 @require_auth
 def api_browse():
@@ -343,7 +594,10 @@ def api_browse():
     Requests for paths outside these roots are rejected.
     """
     _browse_roots_raw = os.environ.get("BROWSE_ROOTS", "/mnt,/media,/data,/home")
-    _browse_roots = [r.strip() for r in _browse_roots_raw.split(",") if r.strip()]
+    _browse_roots = [
+        os.path.realpath(os.path.normpath(r.strip()))
+        for r in _browse_roots_raw.split(",") if r.strip()
+    ]
 
     data = request.get_json(silent=True) or {}
     raw_path = data.get("path", _browse_roots[0] if _browse_roots else "/")
@@ -419,6 +673,8 @@ def _build_library_cfg(lib: dict, env_vars_needed: list) -> dict:
         "cron":  lib.get("cron", "0 * * * *"),
         "paths": [_build_path_cfg(p, env_vars_needed) for p in lib.get("paths", [])],
     }
+    if lib.get("section_id") is not None:
+        lib_cfg["section_id"] = str(lib["section_id"])
     return lib_cfg
 
 
@@ -444,6 +700,7 @@ def _build_instance_cfg(inst: dict, store_tokens: bool, env_vars_needed: list) -
 
 @app.route("/api/wizard/save", methods=["POST"])
 @require_auth
+@_serialized_config_write
 def api_wizard_save():
     """
     Receive wizard form data and write config.yml.
@@ -471,7 +728,13 @@ def api_wizard_save():
             "on_clean":       data.get("notify_clean",       False),
             "on_skip":        data.get("notify_skip",        False),
         },
-        "plex_instances": []
+        "plex_instances": [],
+        "clean_bundles_before_empty": bool(
+            data.get(
+                "clean_bundles_before_empty",
+                existing.get("clean_bundles_before_empty", False),
+            )
+        ),
     }
 
     # Preserve existing auth block unless new credentials are being set
@@ -492,14 +755,16 @@ def api_wizard_save():
     ]
 
     try:
-        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-        with open(CONFIG_PATH, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        runtime_tokens = {
+            str(instance.get("name", "")): str(instance.get("token", ""))
+            for instance in data.get("instances", [])
+        }
+        _save_and_apply(cfg, runtime_tokens=runtime_tokens)
         return jsonify({
             "ok":              True,
             "store_tokens":    store_tokens,
             "env_vars_needed": env_vars_needed,
-            "message":         "Config saved. Restart the container to apply.",
+            "message":         "Config saved and applied immediately.",
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -512,6 +777,9 @@ def api_config_load():
     try:
         with open(CONFIG_PATH, "r") as f:
             raw = yaml.safe_load(f) or {}
+        # Do not send password hashes back to the browser.
+        if isinstance(raw.get("auth"), dict):
+            raw["auth"].pop("password_hash", None)
         return jsonify({"ok": True, "config": raw})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -543,6 +811,7 @@ def api_providers_status():
 
 @app.route("/api/providers/save", methods=["POST"])
 @require_auth
+@_serialized_config_write
 def api_providers_save():
     """Save provider API keys to config.yml providers block."""
     global config
@@ -561,9 +830,9 @@ def api_providers_save():
             raw["providers"] = providers
         else:
             raw.pop("providers", None)
-        with open(CONFIG_PATH, "w") as f:
-            yaml.dump(raw, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-        config = load_config(CONFIG_PATH)
+        new_config = _validate_raw_config(raw)
+        atomic_write_yaml(CONFIG_PATH, raw)
+        _apply_runtime_config(new_config)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -586,6 +855,7 @@ def api_auth_token():
 
 @app.route("/api/auth/save", methods=["POST"])
 @require_auth
+@_serialized_config_write
 def api_auth_save():
     """Save or clear username/password in config.yml."""
     global config
@@ -610,11 +880,9 @@ def api_auth_save():
                 "password_hash": hash_password(password),
             }
 
-        with open(CONFIG_PATH, "w") as f:
-            yaml.dump(raw, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-
-        # Hot-reload config so auth takes effect without restart
-        config = load_config(CONFIG_PATH)
+        new_config = _validate_raw_config(raw)
+        atomic_write_yaml(CONFIG_PATH, raw)
+        _apply_runtime_config(new_config)
 
         action = "cleared" if (clear or not username) else f"set for '{username}'"
         return jsonify({"ok": True, "message": f"Auth {action} — takes effect immediately."})

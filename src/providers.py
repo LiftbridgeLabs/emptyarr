@@ -82,12 +82,12 @@ def get_api_key(provider_type: str, configured_key: str = "", config=None) -> st
     return configured_key or ""
 
 
-def check_provider(provider_type: str, api_key: str) -> Dict:
+def check_provider(provider_type: str, api_key: str, config=None) -> Dict:
     """
     Ping a debrid provider API to confirm connectivity and valid credentials.
     Returns {pass, detail}. Skipped if no api_key.
     """
-    resolved_key = get_api_key(provider_type, api_key)
+    resolved_key = get_api_key(provider_type, api_key, config=config)
     if not resolved_key:
         return {"pass": True, "detail": f"{provider_type}: no API key — check skipped"}
 

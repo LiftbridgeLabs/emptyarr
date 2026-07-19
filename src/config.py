@@ -69,6 +69,7 @@ class AppConfig:
     auth_username: str = ""
     auth_password_hash: str = ""    # bcrypt (or legacy SHA-256) hash, set via Settings UI
     providers: dict = field(default_factory=dict)  # {realdebrid: {api_key: ...}, ...}
+    clean_bundles_before_empty: bool = False
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -157,39 +158,16 @@ def _load_instance(raw: dict) -> PlexInstanceConfig:
 
 # ── Public loader ─────────────────────────────────────────────────────────────
 
-def load_config(path: str = "data/config.yml") -> AppConfig:
-    """
-    Load configuration. If config.yml does not exist the app still starts —
-    returns AppConfig with config_missing=True so the UI shows setup instructions
-    instead of an error.
-    """
+def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
+    """Parse an already-loaded configuration mapping."""
     discord   = os.environ.get("DISCORD_WEBHOOK", "")
     log_level = os.environ.get("LOG_LEVEL", "INFO")
-
-    if not os.path.exists(path):
-        logger.warning(
-            f"No config file found at '{path}'. "
-            "Mount a config.yml to get started. "
-            "UI will show setup instructions."
-        )
-        return AppConfig(
-            instances       = [],
-            discord_webhook = discord,
-            log_level       = log_level,
-            config_missing  = True,
-        )
-
-    with open(path, "r") as f:
-        raw = yaml.safe_load(f) or {}  # safe_load returns None for empty file
-
-    # Empty config — treat same as missing, show setup wizard
     if not raw:
-        logger.warning("config.yml is empty — showing setup wizard.")
         return AppConfig(
             instances       = [],
             discord_webhook = discord,
             log_level       = log_level,
-            config_missing  = True,
+            config_missing  = config_missing,
         )
 
     discord   = os.environ.get("DISCORD_WEBHOOK", raw.get("discord_webhook", ""))
@@ -209,6 +187,7 @@ def load_config(path: str = "data/config.yml") -> AppConfig:
     auth_password_hash = auth_raw.get("password_hash", "")
 
     providers_raw = raw.get("providers", {})
+    clean_bundles_before_empty = bool(raw.get("clean_bundles_before_empty", False))
 
     instances = [_load_instance(inst) for inst in raw.get("plex_instances", [])]
 
@@ -224,4 +203,26 @@ def load_config(path: str = "data/config.yml") -> AppConfig:
         auth_username       = auth_username,
         auth_password_hash  = auth_password_hash,
         providers           = providers_raw,
+        clean_bundles_before_empty = clean_bundles_before_empty,
     )
+
+
+def load_config(path: str = "data/config.yml") -> AppConfig:
+    """
+    Load configuration. If config.yml does not exist the app still starts —
+    returns AppConfig with config_missing=True so the UI shows setup instructions.
+    """
+    if not os.path.exists(path):
+        logger.warning(
+            f"No config file found at '{path}'. "
+            "Mount a config.yml to get started. "
+            "UI will show setup instructions."
+        )
+        return parse_config({}, config_missing=True)
+
+    with open(path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    if not raw:
+        logger.warning("config.yml is empty — showing setup wizard.")
+        return parse_config({}, config_missing=True)
+    return parse_config(raw)

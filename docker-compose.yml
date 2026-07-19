@@ -7,9 +7,8 @@ services:
       - "8222:8222"
     volumes:
       # ── Config file ─────────────────────────────────────────────────────────
-      # Mounted read-write so the setup wizard can save your configuration.
-      # The file is created automatically by the image if it doesn't exist.
-      - ./data/config.yml:/app/data/config.yml
+      # Persist configuration, scheduling state, client identity, and logs.
+      - ./data:/app/data
 
       # ── Media root mounts ────────────────────────────────────────────────────
       # Mount the ROOT of each media area — not individual subfolders.

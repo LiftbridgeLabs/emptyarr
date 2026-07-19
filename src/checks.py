@@ -1,6 +1,6 @@
 import os
 import subprocess
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 def _mountpoint_fallback(path: str) -> Dict:
@@ -46,33 +46,6 @@ def check_mountpoint(path: str) -> Dict:
         check = parent
 
 
-def _is_broken_symlink(full: str) -> bool:
-    return os.path.islink(full) and not os.path.exists(full)
-
-
-def _walk_symlinks(path: str, sample_size: int) -> tuple:
-    """Walk path counting symlinks and broken ones. Returns (checked, broken, examples[:3])."""
-    symlinks_checked = 0
-    symlinks_broken  = 0
-    broken_examples: List[str] = []
-
-    for root, dirs, files in os.walk(path, followlinks=False):
-        for name in files + dirs:
-            full = os.path.join(root, name)
-            if not os.path.islink(full):
-                continue
-            symlinks_checked += 1
-            if _is_broken_symlink(full):
-                symlinks_broken += 1
-                broken_examples.append(os.path.relpath(full, path))
-            if symlinks_checked >= sample_size:
-                break
-        if symlinks_checked >= sample_size:
-            break
-
-    return symlinks_checked, symlinks_broken, broken_examples[:3]
-
-
 def check_debrid_mount(path: str, sample_size: int = 10) -> Dict:
     """
     Check FUSE mount health for debrid/usenet paths by reading symlink targets
@@ -114,10 +87,14 @@ def check_debrid_mount(path: str, sample_size: int = 10) -> Dict:
     # The mount just needs to be accessible and non-empty — targets don't need
     # to resolve (they may point into trash).
     mount_points: set = set()
+    deepest_existing_dirs: set = set()
     for target in targets:
         check = os.path.dirname(target)
+        deepest_existing = None
         while True:
             if os.path.isdir(check):
+                if deepest_existing is None:
+                    deepest_existing = check
                 try:
                     result = subprocess.run(
                         ["mountpoint", "-q", check],
@@ -125,11 +102,14 @@ def check_debrid_mount(path: str, sample_size: int = 10) -> Dict:
                     )
                     if result.returncode == 0:
                         mount_points.add(check)
+                        if deepest_existing:
+                            deepest_existing_dirs.add(deepest_existing)
                         break
                     # Not a mount point — keep walking up
                 except FileNotFoundError:
                     # mountpoint binary unavailable — use first accessible dir
                     mount_points.add(check)
+                    deepest_existing_dirs.add(check)
                     break
                 except Exception:
                     break
@@ -137,6 +117,8 @@ def check_debrid_mount(path: str, sample_size: int = 10) -> Dict:
             if parent == check:
                 if os.path.isdir(check):
                     mount_points.add(check)
+                    if deepest_existing:
+                        deepest_existing_dirs.add(deepest_existing)
                 break
             check = parent
 
@@ -144,6 +126,15 @@ def check_debrid_mount(path: str, sample_size: int = 10) -> Dict:
         return {"pass": False, "detail": "Could not determine mount point from symlink targets"}
 
     failed: List[str] = []
+    for directory in sorted(deepest_existing_dirs - mount_points):
+        try:
+            if not os.listdir(directory):
+                failed.append(
+                    f"{directory} (nearest target directory is empty — "
+                    "underlying mount may be missing)"
+                )
+        except Exception as e:
+            failed.append(f"{directory} ({e})")
     for mp in sorted(mount_points):
         try:
             if not os.listdir(mp):
@@ -156,37 +147,6 @@ def check_debrid_mount(path: str, sample_size: int = 10) -> Dict:
 
     mounts_str = ", ".join(sorted(mount_points))
     return {"pass": True, "detail": f"Debrid mount OK ({mounts_str})"}
-
-
-def check_symlinks(path: str, sample_size: int = 50) -> Dict:
-    """
-    Sample up to sample_size symlinks under path, verify targets resolve.
-    Fails if >10% of sampled symlinks are broken.
-    Checks both file symlinks and directory symlinks (e.g. movie folders).
-    """
-    if not os.path.exists(path):
-        return {"pass": False, "detail": f"Path does not exist: {path}"}
-
-    try:
-        checked, broken, examples = _walk_symlinks(path, sample_size)
-    except PermissionError as e:
-        return {"pass": False, "detail": f"Permission error: {e}"}
-
-    if checked == 0:
-        return {"pass": True, "detail": f"No symlinks found in {path} — skipped"}
-
-    broken_pct = broken / checked
-    if broken_pct > 0.10:
-        return {
-            "pass": False,
-            "detail": (f"{broken}/{checked} sampled symlinks broken "
-                       f"({broken_pct*100:.0f}%) — e.g. {', '.join(examples)}")
-        }
-    return {
-        "pass": True,
-        "detail": (f"Symlinks OK: {broken}/{checked} broken in sample "
-                   f"({broken_pct*100:.0f}%)")
-    }
 
 
 def count_files(path: str) -> int:
@@ -207,13 +167,22 @@ def count_files(path: str) -> int:
     return total
 
 
-def check_file_threshold(path: str, min_threshold: float, plex_count: int) -> Dict:
+def check_file_threshold(path: str, min_threshold: float,
+                         plex_count: Optional[int]) -> Dict:
     """
     Validate file count on disk using ratio check only.
     disk_count / plex_count must be >= min_threshold.
     If plex_count is 0 or unavailable, just verify path is non-empty.
     """
     disk_count = count_files(path)
+
+    if plex_count is None:
+        return {
+            "pass":       False,
+            "disk_count": disk_count,
+            "plex_count": None,
+            "detail":     "Plex item count unavailable — refusing to empty trash",
+        }
 
     if plex_count > 0:
         ratio = disk_count / plex_count

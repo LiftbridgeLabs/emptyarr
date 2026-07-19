@@ -13,8 +13,6 @@
 <title>emptyarr</title>
 <link rel="icon" type="image/png" href="/static/favicon.png">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg:        #0f1117;
@@ -37,8 +35,8 @@
   --warn2:     #fbbf24;
   --info:      #3b82f6;
   --info2:     #60a5fa;
-  --sans:      'Inter', sans-serif;
-  --mono:      'JetBrains Mono', monospace;
+  --sans:      Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:      "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   --nav-h:     52px;
 }
 
@@ -541,6 +539,11 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
 
 <!-- ── DASHBOARD PAGE ── -->
 <div class="page active" id="page-dashboard">
+  {% if config_error %}
+  <div style="color:var(--fail2);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:7px;padding:10px;margin-bottom:16px;">
+    Existing configuration could not be fully loaded: {{ config_error }}
+  </div>
+  {% endif %}
   {% if config_missing %}
   <div class="welcome-wrap">
     <div class="welcome-icon"><img src="/static/icon.png" alt="emptyarr" style="width:80px;height:80px;object-fit:contain;"></div>
@@ -586,10 +589,10 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
           <span class="lib-card-ts" id="ls-t-{{ cid }}">no runs yet</span>
           <div class="lib-card-actions">
             <button class="btn btn-secondary btn-icon btn-sm" title="Dry run"
-                    onclick="dryRunLib('{{ inst.name }}','{{ lib.name }}')"
+                    onclick='dryRunLib({{ inst.name | tojson }},{{ lib.name | tojson }})'
                     id="btn-d-{{ cid }}">◎</button>
             <button class="btn btn-primary btn-icon btn-sm" title="Run now"
-                    onclick="runLib('{{ inst.name }}','{{ lib.name }}')"
+                    onclick='runLib({{ inst.name | tojson }},{{ lib.name | tojson }})'
                     id="btn-r-{{ cid }}">▶</button>
           </div>
         </div>
@@ -655,7 +658,12 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
       <!-- Plex Instances -->
       <div class="settings-section active" id="ss-plex">
         <div class="settings-section-title">Plex Instances</div>
-        <div class="settings-section-desc">Manage your Plex instances and their libraries. Changes are saved to config.yml and require a container restart.</div>
+        <div class="settings-section-desc">Manage Plex instances and libraries. Saved changes are applied immediately.</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+          <button class="btn btn-primary" onclick="connectPlexAccount('settings')">Connect Plex Account</button>
+          <span style="font-size:11px;color:var(--muted);">Discover servers and libraries through Plex sign-in</span>
+        </div>
+        <div id="plex-discovery-settings" style="margin-bottom:16px;"></div>
         <div id="settings-instances-list">
           <div class="empty-msg" style="padding:20px 0;">Loading…</div>
         </div>
@@ -802,7 +810,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
               <input class="form-input" type="password" id="s-auth-pass2" placeholder="Confirm new password" autocomplete="new-password" style="max-width:320px;" />
             </div>
             <div class="form-hint" style="margin-bottom:16px;">
-              Password is stored as a SHA-256 hash in config.yml — never in plaintext.
+              Password is stored as a bcrypt hash in config.yml — never in plaintext.
               You can also set <code style="color:var(--accent2);">EMPTYARR_USERNAME</code> /
               <code style="color:var(--accent2);">EMPTYARR_PASSWORD</code> env vars instead.
             </div>
@@ -908,6 +916,18 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
 <div id="toast"></div>
 
 <script>
+const _csrfToken = {{ csrf_token | tojson }};
+const _nativeFetch = window.fetch.bind(window);
+window.fetch = function(input, init = {}) {
+  const method = String(init.method || 'GET').toUpperCase();
+  const url = typeof input === 'string' ? input : input.url;
+  if (['POST','PUT','PATCH','DELETE'].includes(method) &&
+      new URL(url, window.location.href).origin === window.location.origin) {
+    init.headers = new Headers(init.headers || {});
+    init.headers.set('X-CSRF-Token', _csrfToken);
+  }
+  return _nativeFetch(input, init);
+};
 const _instances = {{ instances | tojson }};
 const _configMissing = {{ 'true' if config_missing else 'false' }};
 let _history = [], _filter = 'all', _expanded = new Set();
@@ -1088,6 +1108,7 @@ async function loadSettings() {
         name:  lib.name  || '',
         type:  lib.type  || 'physical',
         cron:  lib.cron  || '0 * * * *',
+        section_id: lib.section_id ?? null,
         paths: (lib.paths || []).map(p => ({
           path:            p.path          || '',
           type:            p.type          || 'physical',
@@ -1138,8 +1159,8 @@ function renderSettingsInstances() {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Instance Name</label>
-            <input class="form-input" value="${inst.name}" onchange="_settingsData.instances[${ii}].name=this.value;renderSettingsInstances()" />
-            <div class="form-hint">Env var: <code style="color:var(--accent2)">PLEX_TOKEN_${inst.name.toUpperCase().replace(/ /g,'_').replace(/-/g,'_')}</code></div>
+            <input class="form-input" value="${h(inst.name)}" onchange="_settingsData.instances[${ii}].name=this.value;renderSettingsInstances()" />
+            <div class="form-hint">Env var: <code style="color:var(--accent2)">PLEX_TOKEN_${h(inst.name.toUpperCase().replace(/ /g,'_').replace(/-/g,'_'))}</code></div>
           </div>
           <div class="form-group">
             <label class="form-label">Plex URL</label>
@@ -1148,7 +1169,7 @@ function renderSettingsInstances() {
         </div>
         <div class="form-group">
           <label class="form-label">Token (optional — leave blank to use env var)</label>
-          <input class="form-input" type="password" value="${inst.token||''}" placeholder="Set via PLEX_TOKEN_… env var (recommended)"
+          <input class="form-input" type="password" value="${h(inst.token||'')}" placeholder="Set via PLEX_TOKEN_… env var (recommended)"
                  onchange="_settingsData.instances[${ii}].token=this.value" />
         </div>
         <hr class="divider"/>
@@ -1245,7 +1266,7 @@ function renderSettingsLibraries(libs, ii) {
   `).join('') || '<div style="color:var(--muted);font-size:12px;">No libraries — add one below.</div>';
 }
 
-function renderPathItems(paths, ii, li) {
+function renderPathItems(paths, ii, li, source = '_settingsData') {
   if (!paths.length) return '<div style="color:var(--muted);font-size:11px;margin-bottom:6px;">No paths configured</div>';
   return paths.map((p, pi) => {
     const isDebrid = p.type === 'debrid' || p.type === 'usenet';
@@ -1260,23 +1281,23 @@ function renderPathItems(paths, ii, li) {
           <input type="number" min="1" max="100"
             value="${p.min_threshold ?? 90}"
             title="Threshold %"
-            onchange="_settingsData.instances[${ii}].libraries[${li}].paths[${pi}].min_threshold=parseInt(this.value)"
+            onchange="${source}.instances[${ii}].libraries[${li}].paths[${pi}].min_threshold=parseInt(this.value)"
             style="width:52px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-family:var(--mono);font-size:11px;color:var(--text);text-align:center;outline:none;" />
           <span style="font-size:10px;color:var(--muted);">%</span>
         </div>
-        <button class="btn btn-danger btn-xs" onclick="removePath(${ii},${li},${pi})" style="padding:2px 7px;flex-shrink:0;">✕</button>
+        <button class="btn btn-danger btn-xs" onclick="removePath(${ii},${li},${pi},'${source}')" style="padding:2px 7px;flex-shrink:0;">✕</button>
       </div>
       ${isDebrid ? `
       <div style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;display:flex;align-items:center;gap:10px;">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:var(--text2);">
           <input type="checkbox" ${hasProviderCheck ? 'checked' : ''}
             style="accent-color:var(--accent);"
-            onchange="toggleProviderCheck(${ii},${li},${pi},this.checked)" />
+            onchange="toggleProviderCheck(${ii},${li},${pi},this.checked,'${source}')" />
           Provider health check
         </label>
         ${hasProviderCheck ? `
         <select style="background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-size:11px;color:var(--text);outline:none;"
-                onchange="setProviderType(${ii},${li},${pi},this.value)">
+                onchange="setProviderType(${ii},${li},${pi},this.value,'${source}')">
           <option value="realdebrid" ${providerType==='realdebrid'?'selected':''}>Real-Debrid</option>
           <option value="alldebrid"  ${providerType==='alldebrid'?'selected':''}>AllDebrid</option>
           <option value="torbox"     ${providerType==='torbox'?'selected':''}>Torbox</option>
@@ -1339,9 +1360,12 @@ function addPath(ii, li) {
   document.getElementById(`apf-path-${ii}-${li}`).value = '';
 }
 
-function removePath(ii, li, pi) {
-  _settingsData.instances[ii].libraries[li].paths.splice(pi, 1);
-  document.getElementById(`si-paths-${ii}-${li}`).innerHTML = renderPathItems(_settingsData.instances[ii].libraries[li].paths, ii, li);
+function removePath(ii, li, pi, source = '_settingsData') {
+  const data = source === '_wizData' ? _wizData : _settingsData;
+  data.instances[ii].libraries[li].paths.splice(pi, 1);
+  const containerId = source === '_wizData' ? `wp-${ii}-${li}` : `si-paths-${ii}-${li}`;
+  document.getElementById(containerId).innerHTML =
+    renderPathItems(data.instances[ii].libraries[li].paths, ii, li, source);
 }
 
 async function settingsSave() {
@@ -1368,10 +1392,13 @@ async function settingsSave() {
     ['settings-save-result','settings-save-result2'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = d.ok
-        ? `<span style="color:var(--pass);">✓ Saved — restart container to apply</span>`
+        ? `<span style="color:var(--pass);">✓ Saved and applied</span>`
         : `<span style="color:var(--fail2);">✗ ${h(d.error)}</span>`;
     });
-    if (d.ok) toast('Config saved — restart container to apply', 'pass');
+    if (d.ok) {
+      toast('Config saved and applied', 'pass');
+      setTimeout(() => location.reload(), 500);
+    }
     else toast(d.error, 'fail');
   } catch(e) {
     toast('Save failed', 'fail');
@@ -1512,9 +1539,13 @@ function renderWiz1(body, next) {
   next.textContent = 'next →';
   next.onclick = () => { if (_wizData.instances.length) { _wizStep=2; renderWizStep(); } else toast('Add at least one instance', 'fail'); };
   body.innerHTML = `
-    <p style="color:var(--muted);font-size:12px;margin-bottom:16px;">Add each Plex instance you want emptyarr to manage.</p>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px;">Connect your Plex account to discover servers and libraries automatically, or add one manually.</p>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="btn btn-primary" onclick="connectPlexAccount('wizard')">Connect Plex Account</button>
+      <button class="btn btn-secondary" onclick="wizAddInst()">Add Manually</button>
+    </div>
+    <div id="plex-discovery-wizard" style="margin-bottom:14px;"></div>
     <div id="wiz-inst-list"></div>
-    <button class="btn btn-secondary" onclick="wizAddInst()">+ Add Plex Instance</button>
     <div id="wiz-inst-form" style="display:none;margin-top:14px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:16px;">
       <div class="form-row">
         <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="wi-name" placeholder="My Plex" /></div>
@@ -1552,6 +1583,96 @@ function renderWizInstList() {
       <button class="btn btn-danger btn-sm" onclick="_wizData.instances.splice(${i},1);renderWizInstList()">Remove</button>
     </div>`).join('');
 }
+
+let _plexDiscovered = [];
+
+async function connectPlexAccount(target) {
+  const box = document.getElementById(`plex-discovery-${target}`);
+  if (!box) return;
+  const popup = window.open('about:blank', '_blank');
+  if (popup) popup.opener = null;
+  box.innerHTML = '<span class="spin"></span> Starting Plex sign-in…';
+  try {
+    const startResponse = await fetch('/api/plex/auth/start', {method:'POST'});
+    const started = await startResponse.json();
+    if (!started.ok) throw new Error(started.error || 'Could not start Plex sign-in');
+    if (popup) popup.location.replace(started.auth_url);
+    box.innerHTML = `<span class="spin"></span> Approve emptyarr in the Plex window. Waiting for authorization…
+      <a href="${h(started.auth_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--info2);margin-left:8px;">Open Plex sign-in</a>`;
+    const deadline = Date.now() + (started.expires_in * 1000);
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const response = await fetch(`/api/plex/auth/status/${encodeURIComponent(started.state)}`);
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Plex authorization failed');
+      if (result.pending) continue;
+      _plexDiscovered = result.servers || [];
+      if (popup && !popup.closed) popup.close();
+      renderDiscoveredPlex(target);
+      return;
+    }
+    throw new Error('Plex authorization expired');
+  } catch (error) {
+    if (popup && !popup.closed) popup.close();
+    box.innerHTML = `<span style="color:var(--fail2);">✗ ${h(error.message)}</span>`;
+  }
+}
+
+function renderDiscoveredPlex(target) {
+  const box = document.getElementById(`plex-discovery-${target}`);
+  if (!box) return;
+  if (!_plexDiscovered.length) {
+    box.innerHTML = '<span style="color:var(--warn2);">No Plex Media Servers were found on that account.</span>';
+    return;
+  }
+  box.innerHTML = `<div class="card"><div class="card-body">
+    <div class="form-label">Discovered Plex Servers</div>
+    ${_plexDiscovered.map((server, index) => `
+      <label style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <input type="checkbox" data-plex-server="${index}" ${server.error ? 'disabled' : 'checked'} style="margin-top:3px;accent-color:var(--accent);" />
+        <span>
+          <strong style="color:var(--bright);">${h(server.name)}</strong>
+          <span style="color:var(--muted);font-size:10px;"> — ${h(server.url || 'no reachable URL')}</span>
+          <div style="font-size:11px;color:${server.error ? 'var(--fail2)' : 'var(--text2)'};">
+            ${server.error ? h(server.error) : `${server.libraries.length} libraries: ${server.libraries.map(l => h(l.title)).join(', ')}`}
+          </div>
+        </span>
+      </label>`).join('')}
+    <button class="btn btn-success btn-sm" style="margin-top:10px;" onclick="importDiscoveredPlex('${target}')">Import Selected</button>
+  </div></div>`;
+}
+
+function uniqueInstanceName(base, existing) {
+  let name = base || 'Plex';
+  let suffix = 2;
+  while (existing.some(instance => instance.name === name)) name = `${base} (${suffix++})`;
+  return name;
+}
+
+function importDiscoveredPlex(target) {
+  const destination = target === 'wizard' ? _wizData.instances : _settingsData.instances;
+  const selected = [...document.querySelectorAll(`#plex-discovery-${target} [data-plex-server]:checked`)]
+    .map(input => _plexDiscovered[Number(input.dataset.plexServer)]);
+  selected.forEach(server => {
+    destination.push({
+      name: uniqueInstanceName(server.name, destination),
+      url: server.url,
+      token: server.token,
+      libraries: server.libraries.map(library => ({
+        name: library.title,
+        section_id: library.id,
+        type: 'physical',
+        cron: '0 * * * *',
+        paths: [],
+      })),
+    });
+  });
+  if (target === 'wizard') renderWizInstList();
+  else renderSettingsInstances();
+  _plexDiscovered = [];
+  document.getElementById(`plex-discovery-${target}`).innerHTML = '';
+  toast(`Imported ${selected.length} Plex server${selected.length === 1 ? '' : 's'}`, 'pass');
+}
 function wizAddInst() { document.getElementById('wi-name').value=''; document.getElementById('wi-url').value=''; document.getElementById('wi-token').value=''; document.getElementById('wi-hint').textContent='Token used to verify connection and fetch library names.'; document.getElementById('wi-hint').className='form-hint'; document.getElementById('wi-libs').style.display='none'; document.getElementById('wi-save').style.display='none'; document.getElementById('wiz-inst-form').style.display='block'; }
 async function wizTestPlex() {
   const url=document.getElementById('wi-url').value.trim(), token=document.getElementById('wi-token').value.trim(), hint=document.getElementById('wi-hint');
@@ -1564,7 +1685,7 @@ async function wizTestPlex() {
       hint.textContent=`✓ ${d.detail}`; hint.className='form-hint success';
       document.getElementById('wi-lib-checks').innerHTML=d.libraries.map(lib=>`
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text);">
-          <input type="checkbox" value="${h(lib.title)}" checked style="accent-color:var(--accent);" /> ${h(lib.title)}
+          <input type="checkbox" value="${h(lib.title)}" data-section-id="${h(lib.id)}" checked style="accent-color:var(--accent);" /> ${h(lib.title)}
           <span style="color:var(--muted);font-size:10px;">(${h(lib.type)})</span>
         </label>`).join('');
       document.getElementById('wi-libs').style.display='block';
@@ -1575,8 +1696,10 @@ async function wizTestPlex() {
 function wizSaveInst() {
   const name=document.getElementById('wi-name').value.trim(), url=document.getElementById('wi-url').value.trim(), token=document.getElementById('wi-token').value.trim();
   if (!name||!url) { toast('Name and URL required','fail'); return; }
-  const selected=[...document.querySelectorAll('#wi-lib-checks input:checked')].map(cb=>cb.value);
-  _wizData.instances.push({ name, url, token, libraries: selected.map(n=>({name:n,type:'physical',cron:'0 * * * *',paths:[]})) });
+  const selected=[...document.querySelectorAll('#wi-lib-checks input:checked')].map(cb=>({
+    name:cb.value, section_id:cb.dataset.sectionId, type:'physical', cron:'0 * * * *', paths:[]
+  }));
+  _wizData.instances.push({ name, url, token, libraries: selected });
   document.getElementById('wiz-inst-form').style.display='none';
   renderWizInstList();
   toast(`✓ ${name} added`,'pass');
@@ -1591,8 +1714,8 @@ function renderWiz2(body, next) {
     inst.libraries.forEach((lib,li)=>{
       html+=`<div style="background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:14px;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-          <span style="font-weight:600;color:var(--bright);">${lib.name}</span>
-          <span style="color:var(--muted);font-size:11px;">— ${inst.name}</span>
+          <span style="font-weight:600;color:var(--bright);">${h(lib.name)}</span>
+          <span style="color:var(--muted);font-size:11px;">— ${h(inst.name)}</span>
         </div>
         <div class="form-row" style="margin-bottom:10px;">
           <div class="form-group" style="margin-bottom:0;">
@@ -1614,12 +1737,12 @@ function renderWiz2(body, next) {
             </select>
           </div>
         </div>
-        <div id="wp-${ii}-${li}">${renderPathItems(lib.paths,ii,li)}</div>
+        <div id="wp-${ii}-${li}">${renderPathItems(lib.paths,ii,li,'_wizData')}</div>
         <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="showWizPathForm(${ii},${li})">+ Add Path</button>
         <div class="add-path-form" id="wpf-${ii}-${li}">
           <div class="form-row" style="margin-bottom:10px;">
             <div class="form-group" style="margin-bottom:0;"><label class="form-label">Type</label>
-              <select class="form-input" id="wpt-${ii}-${li}"><option value="physical">physical</option><option value="debrid">debrid</option></select></div>
+              <select class="form-input" id="wpt-${ii}-${li}"><option value="physical">physical</option><option value="debrid">debrid</option><option value="usenet">usenet</option></select></div>
             <div class="form-group" style="margin-bottom:0;"><label class="form-label">Threshold %</label>
               <input class="form-input" type="number" id="wpm-${ii}-${li}" value="90" min="1" max="100" /></div>
           </div>
@@ -1650,7 +1773,7 @@ function addWizPath(ii,li){
   const p={path,type,min_threshold:thr};
   if(type==='debrid'||type==='usenet') p.provider_checks=[];
   _wizData.instances[ii].libraries[li].paths.push(p);
-  document.getElementById(`wp-${ii}-${li}`).innerHTML=renderPathItems(_wizData.instances[ii].libraries[li].paths,ii,li);
+  document.getElementById(`wp-${ii}-${li}`).innerHTML=renderPathItems(_wizData.instances[ii].libraries[li].paths,ii,li,'_wizData');
   document.getElementById(`wpf-${ii}-${li}`).classList.remove('open');
 }
 
@@ -1660,11 +1783,11 @@ function renderWiz3(body, next) {
   const envRows=_wizData.instances.map((inst,i)=>{
     const safe=inst.name.toUpperCase().replace(/ /g,'_').replace(/-/g,'_');
     return `<div style="margin-bottom:12px;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${inst.name}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${h(inst.name)}</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <code style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 10px;font-family:var(--mono);font-size:12px;color:var(--accent2);">PLEX_TOKEN_${safe}</code>
         <span style="color:var(--muted);font-size:11px;">=</span>
-        <input type="password" id="wt-${i}" value="${inst.token||''}" placeholder="your Plex token"
+        <input type="password" id="wt-${i}" value="${h(inst.token||'')}" placeholder="your Plex token"
           style="flex:1;min-width:180px;background:var(--bg);border:1px solid var(--border2);border-radius:5px;padding:5px 10px;font-family:var(--mono);font-size:11px;color:var(--text);outline:none;" />
       </div>
     </div>`;
@@ -1685,7 +1808,7 @@ function renderWiz3(body, next) {
     </div>
     <hr class="divider"/>
     <div class="form-group"><label class="form-label">Discord Webhook (optional)</label>
-      <input class="form-input" id="wd-discord" value="${_wizData.discord_webhook||''}" placeholder="https://discord.com/api/webhooks/…" /></div>
+      <input class="form-input" id="wd-discord" value="${h(_wizData.discord_webhook||'')}" placeholder="https://discord.com/api/webhooks/…" /></div>
     <div id="wiz-save-result" style="margin-top:12px;"></div>`;
 }
 async function wizSave3() {
@@ -1710,27 +1833,17 @@ async function wizSave3() {
       }
       result.innerHTML=`<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:7px;padding:14px;color:var(--pass);font-size:12px;line-height:1.7;">
         ✓ Config saved! ${envSection}
-        <div style="margin-top:10px;"><button class="btn btn-secondary btn-sm" onclick="startPolling(this)">↺ Poll for container restart</button></div>
+        <div style="margin-top:10px;">Settings are active now. Reloading the dashboard…</div>
       </div>`;
       btn.innerHTML='✓ saved';
       toast('Config saved','pass');
+      setTimeout(() => location.reload(), 700);
     } else {
       result.innerHTML=`<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:7px;padding:12px;color:var(--fail2);font-size:12px;">✗ ${h(d.error)}</div>`;
       btn.disabled=false; btn.innerHTML='💾 Save Config';
     }
   } catch(e) { toast('Save failed','fail'); btn.disabled=false; btn.innerHTML='💾 Save Config'; }
 }
-function startPolling(btn){
-  btn.disabled=true; btn.textContent='polling…';
-  let n=0;
-  const iv=setInterval(async()=>{
-    n++;
-    try{const r=await fetch('/api/status',{signal:AbortSignal.timeout(2000)});if(r.ok){clearInterval(iv);toast('✓ Container back up — reloading','pass');setTimeout(()=>location.reload(),1500);}}
-    catch(e){}
-    if(n>=30){clearInterval(iv);btn.disabled=false;btn.textContent='↺ retry';}
-  },2000);
-}
-
 // ── Auth settings ─────────────────────────────────────────────────────────────
 async function loadApiToken() {
   try {
@@ -1800,7 +1913,7 @@ function updateAuthBanner(enabled, username) {
   const el = document.getElementById('auth-status-banner');
   if (!el) return;
   if (enabled) {
-    el.innerHTML=`<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:7px;padding:10px 14px;font-size:12px;color:var(--pass);">🔒 Auth enabled — signed in as <strong>${username}</strong></div>`;
+    el.innerHTML=`<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:7px;padding:10px 14px;font-size:12px;color:var(--pass);">🔒 Auth enabled — signed in as <strong>${h(username)}</strong></div>`;
   } else {
     el.innerHTML=`<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:7px;padding:10px 14px;font-size:12px;color:var(--warn2);">⚠️ Auth disabled — UI is open to anyone on the network</div>`;
   }
@@ -1808,7 +1921,7 @@ function updateAuthBanner(enabled, username) {
 
 function initAuthBanner() {
   const authEnabled = {{ 'true' if auth_enabled else 'false' }};
-  updateAuthBanner(authEnabled, '{{ config.auth_username if config else "" }}');
+  updateAuthBanner(authEnabled, {{ (config.auth_username if config else "") | tojson }});
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
@@ -1901,19 +2014,21 @@ async function loadProviderStatus(force = false) {
   }
 }
 
-function toggleProviderCheck(ii, li, pi, enabled) {
+function toggleProviderCheck(ii, li, pi, enabled, source = '_settingsData') {
+  const data = source === '_wizData' ? _wizData : _settingsData;
   if (enabled) {
-    _settingsData.instances[ii].libraries[li].paths[pi].provider_checks = [{ type: 'realdebrid', api_key: '' }];
+    data.instances[ii].libraries[li].paths[pi].provider_checks = [{ type: 'realdebrid', api_key: '' }];
   } else {
-    _settingsData.instances[ii].libraries[li].paths[pi].provider_checks = [];
+    data.instances[ii].libraries[li].paths[pi].provider_checks = [];
   }
-  // Re-render just the paths for this library
-  document.getElementById(`si-paths-${ii}-${li}`).innerHTML =
-    renderPathItems(_settingsData.instances[ii].libraries[li].paths, ii, li);
+  const containerId = source === '_wizData' ? `wp-${ii}-${li}` : `si-paths-${ii}-${li}`;
+  document.getElementById(containerId).innerHTML =
+    renderPathItems(data.instances[ii].libraries[li].paths, ii, li, source);
 }
 
-function setProviderType(ii, li, pi, type) {
-  const pcs = _settingsData.instances[ii].libraries[li].paths[pi].provider_checks;
+function setProviderType(ii, li, pi, type, source = '_settingsData') {
+  const data = source === '_wizData' ? _wizData : _settingsData;
+  const pcs = data.instances[ii].libraries[li].paths[pi].provider_checks;
   if (pcs && pcs.length > 0) pcs[0].type = type;
 }
 

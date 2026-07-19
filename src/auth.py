@@ -2,6 +2,7 @@ import bcrypt
 import hashlib
 import os
 import secrets
+import threading
 import time
 from functools import wraps
 from flask import request, session, redirect, url_for, jsonify
@@ -51,31 +52,36 @@ def auth_enabled(config=None) -> bool:
 # ── Brute force protection ────────────────────────────────────────────────────
 # Simple in-memory tracker: {ip: [timestamp, ...]}
 _login_attempts: dict = {}
+_locked_until: dict = {}
+_attempt_lock = threading.Lock()
 _MAX_ATTEMPTS  = 10    # max failures in window
 _WINDOW_SECS   = 300   # 5 minute window
 _LOCKOUT_SECS  = 600   # 10 minute lockout after max attempts
 
 
 def _record_attempt(ip: str, success: bool):
-    now = time.time()
-    attempts = _login_attempts.get(ip, [])
-    # Prune old attempts
-    attempts = [t for t in attempts if now - t < _WINDOW_SECS]
-    if not success:
-        attempts.append(now)
-    else:
-        attempts = []  # clear on success
-    _login_attempts[ip] = attempts
+    with _attempt_lock:
+        now = time.time()
+        attempts = _login_attempts.get(ip, [])
+        attempts = [t for t in attempts if now - t < _WINDOW_SECS]
+        if not success:
+            attempts.append(now)
+            if len(attempts) >= _MAX_ATTEMPTS:
+                _locked_until[ip] = now + _LOCKOUT_SECS
+        else:
+            attempts = []
+            _locked_until.pop(ip, None)
+        _login_attempts[ip] = attempts
 
 
 def _is_locked_out(ip: str) -> bool:
-    now      = time.time()
-    attempts = _login_attempts.get(ip, [])
-    recent   = [t for t in attempts if now - t < _WINDOW_SECS]
-    if len(recent) >= _MAX_ATTEMPTS:
-        # Locked out if most recent attempt is within lockout window
-        return (now - max(recent)) < _LOCKOUT_SECS
-    return False
+    with _attempt_lock:
+        now = time.time()
+        until = _locked_until.get(ip, 0)
+        if until <= now:
+            _locked_until.pop(ip, None)
+            return False
+        return True
 
 
 def check_credentials(username: str, password: str, config=None, ip: str = "") -> bool:

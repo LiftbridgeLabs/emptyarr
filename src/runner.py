@@ -11,6 +11,7 @@ from src.plex_client import PlexClient
 from src.checks import check_mountpoint, check_debrid_mount, check_file_threshold, count_files
 from src.providers import check_provider
 from src import notifications
+from src.storage import atomic_write_json
 
 logger = logging.getLogger("emptyarr")
 
@@ -20,6 +21,7 @@ _instance_status: Dict        = {}   # instance_name -> {library_name -> status}
 _last_global_checks: Dict     = {}   # instance_name -> {check_name -> result}
 _scheduling_enabled: bool     = True
 _lock = threading.Lock()
+_run_locks: Dict[str, threading.Lock] = {}
 
 _STATE_FILE = os.environ.get("STATE_FILE", "data/state.json")
 
@@ -37,9 +39,7 @@ def _load_state():
 
 def _save_state():
     try:
-        os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
-        with open(_STATE_FILE, "w") as f:
-            json.dump({"scheduling_enabled": _scheduling_enabled}, f)
+        atomic_write_json(_STATE_FILE, {"scheduling_enabled": _scheduling_enabled})
     except Exception:
         pass
 
@@ -71,6 +71,21 @@ def set_scheduling_enabled(enabled: bool):
         _scheduling_enabled = enabled
     _save_state()
     logger.info(f"Scheduling {'enabled' if enabled else 'paused'}")
+
+
+def prune_runtime_state(valid_libraries: set[tuple[str, str]]) -> None:
+    """Drop dashboard state for instances/libraries removed by live reload."""
+    with _lock:
+        for instance_name in list(_instance_status):
+            libraries = _instance_status[instance_name]
+            for library_name in list(libraries):
+                if (instance_name, library_name) not in valid_libraries:
+                    libraries.pop(library_name, None)
+            if not libraries:
+                _instance_status.pop(instance_name, None)
+        for instance_name in list(_last_global_checks):
+            if not any(name == instance_name for name, _ in valid_libraries):
+                _last_global_checks.pop(instance_name, None)
 
 
 # ── History recording ─────────────────────────────────────────────────────────
@@ -107,8 +122,8 @@ def _record(instance_name: str, library_name: str, status: str,
 
 # ── Per-path checks ───────────────────────────────────────────────────────────
 
-def _run_path_checks(path_cfg: PathConfig, plex_count: int,
-                     skip_threshold: bool = False) -> Dict:
+def _run_path_checks(path_cfg: PathConfig, plex_count: Optional[int],
+                     config: AppConfig, skip_threshold: bool = False) -> Dict:
     """
     Run all checks appropriate for a single path based on its type.
     skip_threshold=True skips the individual file count check (used for mixed
@@ -133,18 +148,25 @@ def _run_path_checks(path_cfg: PathConfig, plex_count: int,
     # 4. Provider API checks — optional
     for pc in path_cfg.provider_checks:
         check_name = f"{pc.type.capitalize()} API ({label})"
-        results[check_name] = check_provider(pc.type, pc.api_key)
+        results[check_name] = check_provider(pc.type, pc.api_key, config=config)
 
     return results
 
 
-def _run_mixed_threshold(library: LibraryConfig, plex_count: int) -> Dict:
+def _run_mixed_threshold(library: LibraryConfig,
+                         plex_count: Optional[int]) -> Dict:
     """
     For mixed libraries: sum files across ALL paths and compare combined
     total to Plex count. Uses the lowest min_threshold across all paths.
     """
     total_disk = sum(count_files(p.path) for p in library.paths)
     threshold  = min((p.min_threshold for p in library.paths), default=0.90)
+
+    if plex_count is None:
+        return {
+            "pass": False,
+            "detail": "Plex item count unavailable — refusing to empty trash",
+        }
 
     if plex_count > 0:
         ratio = total_disk / plex_count
@@ -240,7 +262,8 @@ def _handle_dry_run(instance, library, trash_items, all_checks, headline_count):
 def _handle_empty_failed(config, instance, library, result, all_checks, trash_items):
     msg = f"emptyTrash failed: {result.get('error', result.get('http'))}"
     logger.error(f"[{instance.name} / {library.name}] {msg}")
-    _record(instance.name, library.name, "error", all_checks, msg, trash_items)
+    _record(instance.name, library.name, "error", all_checks, msg,
+            removed_items=[], removed_count=0)
     if config.notify.on_error and config.discord_webhook:
         notifications.notify_error(config.discord_webhook,
                                    instance.name, library.name,
@@ -291,10 +314,26 @@ def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
                 plex_checks: Optional[Dict] = None,
                 dry_run: bool = False,
                 manual: bool = False):
-    """
-    Full run for one library.
-    manual=True bypasses the scheduling gate (used for UI button triggers).
-    """
+    """Serialize work so scheduled and manual runs cannot overlap."""
+    key = f"{instance.name}::{library.name}"
+    with _lock:
+        run_lock = _run_locks.setdefault(key, threading.Lock())
+    if not run_lock.acquire(blocking=False):
+        _record(instance.name, library.name, "skipped", {},
+                "A run is already in progress")
+        return
+    try:
+        _run_library(instance, library, config, plex, plex_checks, dry_run, manual)
+    finally:
+        run_lock.release()
+
+
+def _run_library(instance: PlexInstanceConfig, library: LibraryConfig,
+                 config: AppConfig, plex: PlexClient,
+                 plex_checks: Optional[Dict] = None,
+                 dry_run: bool = False,
+                 manual: bool = False):
+    """Full run for one library after acquiring its execution lock."""
     mode = "DRY RUN" if dry_run else "run"
     logger.info(f"[{instance.name} / {library.name}] Starting {mode}{'  (manual)' if manual else ''}")
 
@@ -316,7 +355,9 @@ def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
 
     for path_cfg in library.paths:
         # For mixed libraries skip individual threshold — use combined check below
-        all_checks.update(_run_path_checks(path_cfg, plex_count, skip_threshold=is_mixed))
+        all_checks.update(_run_path_checks(
+            path_cfg, plex_count, config, skip_threshold=is_mixed
+        ))
 
     if is_mixed and library.paths:
         all_checks["Files (combined)"] = _run_mixed_threshold(library, plex_count)
@@ -326,7 +367,17 @@ def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
         _handle_checks_failed(config, instance, library, all_checks, failed)
         return
 
-    trash_items    = plex.get_trash_items(section_id)
+    trash_items = plex.get_trash_items(section_id)
+    if trash_items is None:
+        msg = "Could not inventory Plex trash — refusing to empty"
+        logger.error(f"[{instance.name} / {library.name}] {msg}")
+        _record(instance.name, library.name, "error", all_checks, msg)
+        if config.notify.on_error and config.discord_webhook:
+            notifications.notify_error(
+                config.discord_webhook, instance.name, library.name,
+                msg, all_checks,
+            )
+        return
     trash_count    = len(trash_items)
 
     if dry_run:
@@ -337,9 +388,17 @@ def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
     logger.info(f"[{instance.name} / {library.name}] "
                 f"{_breakdown(trash_items)} in trash snapshot, emptying…")
 
-    # Clean bundles first — moves unavailable/replaced items into actual trash
-    # so emptyTrash can pick them up. Harmless if nothing to clean.
-    plex.clean_bundles()
+    # Clean Bundles is a server-wide maintenance action and therefore opt-in.
+    if config.clean_bundles_before_empty:
+        clean_result = plex.clean_bundles()
+        if not clean_result["ok"]:
+            _handle_empty_failed(
+                config, instance, library,
+                {"error": "Clean Bundles failed: "
+                          f"{clean_result.get('error', clean_result.get('http'))}"},
+                all_checks, trash_items,
+            )
+            return
     result = plex.empty_trash(section_id)
 
     if not result["ok"]:
@@ -348,6 +407,11 @@ def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
 
     time.sleep(2)
     remaining_items = plex.get_trash_items(section_id)
+    if remaining_items is None:
+        msg = "emptyTrash succeeded, but verification inventory failed"
+        logger.error(f"[{instance.name} / {library.name}] {msg}")
+        _record(instance.name, library.name, "error", all_checks, msg)
+        return
     removed_items = _items_removed(trash_items, remaining_items)
 
     _handle_empty_success(config, instance, library, trash_items, all_checks,
