@@ -68,15 +68,51 @@ plex_clients: dict[str, PlexClient] = {
     for inst in config.instances
 }
 
-app            = Flask(__name__)
-_secret_key_env = os.environ.get("EMPTYARR_SECRET_KEY", "")
-if not _secret_key_env:
-    logger.warning(
-        "EMPTYARR_SECRET_KEY is not set — a random session key will be generated on every "
-        "restart, which logs out all users. Set this env var to a stable random value "
-        "(e.g. `openssl rand -hex 32`) to persist sessions across restarts."
+app = Flask(__name__)
+
+
+def _load_session_key() -> str:
+    """Resolve a session key from an override or the persistent data directory."""
+    configured = os.environ.get("EMPTYARR_SECRET_KEY", "").strip()
+    if configured:
+        return configured
+
+    key_path = os.environ.get(
+        "EMPTYARR_SECRET_KEY_FILE",
+        os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), ".session-key"),
     )
-app.secret_key = _secret_key_env or secrets.token_hex(32)
+    try:
+        if os.path.exists(key_path):
+            with open(key_path, "r", encoding="utf-8") as handle:
+                persisted = handle.read().strip()
+            if persisted:
+                return persisted
+
+        generated = secrets.token_hex(32)
+        os.makedirs(os.path.dirname(os.path.abspath(key_path)), exist_ok=True)
+        try:
+            descriptor = os.open(
+                key_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(generated)
+            logger.info("Created persistent session key at %s", key_path)
+            return generated
+        except FileExistsError:
+            with open(key_path, "r", encoding="utf-8") as handle:
+                return handle.read().strip() or generated
+    except OSError as exc:
+        logger.warning(
+            "Could not persist the session key at %s (%s); sessions will reset on restart",
+            key_path,
+            exc,
+        )
+        return secrets.token_hex(32)
+
+
+app.secret_key = _load_session_key()
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"]   = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
@@ -351,6 +387,29 @@ def _build_ui_instances():
     return result
 
 
+def _active_config_overrides() -> list[str]:
+    fixed = {
+        "DISCORD_WEBHOOK",
+        "LOG_LEVEL",
+        "EMPTYARR_USERNAME",
+        "EMPTYARR_PASSWORD",
+        "RD_API_KEY",
+        "AD_API_KEY",
+        "TB_API_KEY",
+        "DL_API_KEY",
+        "PLEX_URL",
+        "PLEX_TOKEN",
+    }
+    return sorted(
+        name for name, value in os.environ.items()
+        if value and (
+            name in fixed
+            or name.startswith("PLEX_URL_")
+            or name.startswith("PLEX_TOKEN_")
+        )
+    )
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/favicon.ico", methods=["GET"])
@@ -399,6 +458,8 @@ def index():
         csrf_token=_csrf_token(),
         config_error=CONFIG_LOAD_ERROR,
         app_version=__version__,
+        config_path=CONFIG_PATH,
+        config_overrides=_active_config_overrides(),
     )
 
 
@@ -735,6 +796,7 @@ def api_wizard_save():
 
     cfg = {
         "discord_webhook": data.get("discord_webhook", ""),
+        "log_level": data.get("log_level", existing.get("log_level", "INFO")),
         "notify": {
             "on_emptied":     data.get("notify_emptied",     data.get("notify_success", True)),
             "on_health_fail": data.get("notify_health_fail", data.get("notify_failure", True)),

@@ -85,6 +85,12 @@ def _env_keys() -> dict:
     }
 
 
+def _env_override(name: str, fallback: str = "") -> str:
+    """Use a non-empty environment override, otherwise keep file configuration."""
+    value = os.environ.get(name, "")
+    return value if value else fallback
+
+
 def _load_provider_checks(raw: list) -> List[ProviderCheck]:
     keys = _env_keys()
     checks = []
@@ -147,8 +153,14 @@ def _load_library(raw: dict) -> LibraryConfig:
 
 def _load_instance(raw: dict) -> PlexInstanceConfig:
     safe  = raw["name"].upper().replace(" ", "_").replace("-", "_")
-    url   = os.environ.get(f"PLEX_URL_{safe}",   os.environ.get("PLEX_URL",   raw.get("url",   "")))
-    token = os.environ.get(f"PLEX_TOKEN_{safe}", os.environ.get("PLEX_TOKEN", raw.get("token", "")))
+    url   = _env_override(
+        f"PLEX_URL_{safe}",
+        _env_override("PLEX_URL", raw.get("url", "")),
+    )
+    token = _env_override(
+        f"PLEX_TOKEN_{safe}",
+        _env_override("PLEX_TOKEN", raw.get("token", "")),
+    )
     return PlexInstanceConfig(
         name      = raw["name"],
         url       = url,
@@ -162,8 +174,8 @@ def _load_instance(raw: dict) -> PlexInstanceConfig:
 
 def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
     """Parse an already-loaded configuration mapping."""
-    discord   = os.environ.get("DISCORD_WEBHOOK", "")
-    log_level = os.environ.get("LOG_LEVEL", "INFO")
+    discord   = _env_override("DISCORD_WEBHOOK", "")
+    log_level = _env_override("LOG_LEVEL", "INFO")
     if not raw:
         return AppConfig(
             instances       = [],
@@ -172,8 +184,8 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
             config_missing  = config_missing,
         )
 
-    discord   = os.environ.get("DISCORD_WEBHOOK", raw.get("discord_webhook", ""))
-    log_level = os.environ.get("LOG_LEVEL",       raw.get("log_level", "INFO"))
+    discord   = _env_override("DISCORD_WEBHOOK", raw.get("discord_webhook", ""))
+    log_level = _env_override("LOG_LEVEL", raw.get("log_level", "INFO"))
 
     notify_raw = raw.get("notify", {})
     notify = NotifyConfig(

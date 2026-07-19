@@ -156,6 +156,66 @@ nav{
 .dashboard-subtitle{color:var(--text2);font-size:14px;}
 .dashboard-subtitle strong{color:var(--bright);font-weight:700;}
 .dashboard-intro-actions{display:flex;gap:10px;flex-shrink:0;}
+.overview-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(360px,.75fr);gap:16px;margin-bottom:34px;}
+.protection-overview,.recent-overview{
+  position:relative;
+  overflow:hidden;
+  background:linear-gradient(145deg,var(--surface),var(--bg2));
+  border:1px solid var(--border);
+  border-radius:16px;
+}
+.protection-overview{padding:25px 26px;}
+.protection-overview::after{
+  content:"";
+  position:absolute;
+  width:360px;
+  height:360px;
+  right:-150px;
+  top:-210px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(23,190,187,.18),transparent 68%);
+  pointer-events:none;
+}
+.overview-label{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);}
+.protection-main{display:flex;align-items:center;gap:22px;margin:20px 0 22px;}
+.protection-mark{
+  width:88px;
+  height:88px;
+  border-radius:22px;
+  display:grid;
+  place-items:center;
+  background:linear-gradient(145deg,rgba(23,190,187,.16),rgba(23,190,187,.04));
+  border:1px solid rgba(88,222,213,.22);
+  box-shadow:inset 0 0 30px rgba(23,190,187,.06);
+  flex-shrink:0;
+}
+.protection-mark img{width:70px;height:70px;object-fit:contain;}
+.protection-title{font-size:clamp(24px,1.7vw,34px);line-height:1.12;color:var(--bright);letter-spacing:-.7px;margin-bottom:6px;}
+.protection-copy{font-size:13px;color:var(--text2);}
+.protection-bar{height:10px;display:flex;overflow:hidden;border-radius:20px;background:var(--border);margin-bottom:15px;}
+.protection-segment{height:100%;min-width:0;transition:width .35s ease;}
+.protection-segment.ready{background:linear-gradient(90deg,#10b981,#35d399);}
+.protection-segment.attention{background:linear-gradient(90deg,#f59e0b,#f87171);}
+.protection-segment.pending{background:var(--border2);}
+.protection-legend{display:flex;align-items:center;gap:24px;flex-wrap:wrap;}
+.legend-item{display:flex;align-items:center;gap:8px;color:var(--text2);font-size:12px;}
+.legend-dot{width:8px;height:8px;border-radius:3px;background:var(--border2);}
+.legend-dot.ready{background:var(--pass);}
+.legend-dot.attention{background:var(--warn);}
+.legend-value{font-family:var(--mono);font-weight:700;color:var(--bright);}
+.recent-overview{padding:22px 22px 15px;}
+.recent-overview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.text-link{border:0;background:none;color:var(--accent2);font:inherit;font-size:12px;cursor:pointer;}
+.activity-list{display:flex;flex-direction:column;}
+.activity-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border);}
+.activity-status{width:9px;height:9px;border-radius:50%;background:var(--muted);}
+.activity-status.success{background:var(--pass);box-shadow:0 0 8px rgba(16,185,129,.35);}
+.activity-status.error{background:var(--fail);}
+.activity-status.skipped{background:var(--warn);}
+.activity-status.dry_run{background:var(--info);}
+.activity-name{color:var(--bright);font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.activity-instance{color:var(--muted);font-size:11px;margin-top:1px;}
+.activity-time{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;}
 .instance-section{margin-bottom:34px;}
 .instance-header-row{
   display:flex;
@@ -190,20 +250,23 @@ nav{
 
 .lib-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:15px;}
 .lib-card{
-  background:var(--surface);
+  background:linear-gradient(160deg,var(--surface),var(--bg2));
   border:1px solid var(--border);
-  border-left:3px solid var(--border);
+  border-top:3px solid var(--border);
   border-radius:12px;
   overflow:hidden;
-  transition:border-color .2s;
+  transition:border-color .2s,transform .2s,box-shadow .2s;
 }
-.lib-card.success{border-left-color:var(--pass);}
-.lib-card.skipped{border-left-color:var(--warn);}
-.lib-card.error   {border-left-color:var(--fail);}
-.lib-card.dry_run {border-left-color:var(--info);}
-.lib-card.idle    {border-left-color:var(--border2);}
+.lib-card:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(0,0,0,.16);}
+.lib-card.success{border-top-color:var(--pass);}
+.lib-card.skipped{border-top-color:var(--warn);}
+.lib-card.error   {border-top-color:var(--fail);}
+.lib-card.dry_run {border-top-color:var(--info);}
+.lib-card.idle    {border-top-color:var(--border2);}
 
 .lib-card-top{padding:16px 17px 13px;display:flex;align-items:center;justify-content:space-between;}
+.lib-identity{display:flex;align-items:center;gap:11px;}
+.library-glyph{width:35px;height:35px;border-radius:10px;display:grid;place-items:center;background:rgba(23,190,187,.1);color:var(--accent2);font-size:17px;border:1px solid rgba(88,222,213,.14);}
 .lib-card-name{font-size:16px;font-weight:700;color:var(--bright);}
 .type-chip{
   font-family:var(--mono);
@@ -220,7 +283,15 @@ nav{
 .type-chip.usenet  {color:var(--info2);}
 .type-chip.mixed   {color:var(--warn2);}
 
-.lib-stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-top:1px solid var(--border);}
+.lib-state-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 17px;border-top:1px solid var(--border);}
+.lib-state{display:flex;align-items:center;gap:9px;}
+.lib-state-dot{width:9px;height:9px;border-radius:50%;background:var(--muted);}
+.lib-state-dot.pass{background:var(--pass);box-shadow:0 0 8px rgba(16,185,129,.4);}
+.lib-state-dot.fail{background:var(--fail);}
+.lib-state-dot.warn{background:var(--warn);}
+.lib-state-dot.info{background:var(--info);}
+.lib-state-text{font-size:14px;font-weight:750;color:var(--bright);text-transform:capitalize;}
+.lib-stats-row{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border);border-top:1px solid var(--border);}
 .lib-stat{background:var(--surface);padding:13px 11px;text-align:center;}
 .lib-stat-val{font-family:var(--mono);font-size:22px;font-weight:750;color:var(--bright);line-height:1;}
 .lib-stat-val.pass {color:var(--pass);}
@@ -230,7 +301,7 @@ nav{
 .lib-stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-top:5px;}
 
 .lib-card-footer{
-  padding:11px 14px;
+  padding:12px 14px;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -239,7 +310,7 @@ nav{
 }
 .lib-card-ts{font-size:12px;color:var(--muted);}
 .lib-card-ts b{color:var(--text2);}
-.lib-card-actions{display:flex;gap:4px;}
+.lib-card-actions{display:flex;gap:7px;}
 
 /* ── HISTORY PAGE ── */
 .filters{display:flex;gap:5px;}
@@ -528,6 +599,9 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
   body{font-size:17px;}
   .page{padding-top:42px;}
 }
+@media(max-width:1100px){
+  .overview-grid{grid-template-columns:1fr;}
+}
 @media(max-width:768px){
   nav{padding:0 14px;}
   .nav-brand{margin-right:10px;}
@@ -537,6 +611,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
   .sched-label,.nav-right .btn-warn{display:none;}
   .page,.app-footer{width:calc(100% - 28px);}
   .dashboard-intro{align-items:flex-start;flex-direction:column;}
+  .protection-main{align-items:flex-start;flex-direction:column;}
   .lib-grid{grid-template-columns:1fr;}
   .form-row,.form-row-3{grid-template-columns:1fr;}
   .expand-cols{grid-template-columns:1fr;}
@@ -602,6 +677,37 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
       <button class="btn btn-primary" onclick="showPage('settings',document.getElementById('nav-settings'))">Manage libraries</button>
     </div>
   </div>
+  <div class="overview-grid">
+    <section class="protection-overview">
+      <div class="overview-label">Protection status</div>
+      <div class="protection-main">
+        <div class="protection-mark"><img src="/static/icon.png" alt=""></div>
+        <div>
+          <h2 class="protection-title" id="protection-title">Checking your libraries…</h2>
+          <div class="protection-copy" id="protection-copy">Loading the latest health and run state.</div>
+        </div>
+      </div>
+      <div class="protection-bar" aria-hidden="true">
+        <span class="protection-segment ready" id="protection-ready-bar" style="width:0"></span>
+        <span class="protection-segment attention" id="protection-attention-bar" style="width:0"></span>
+        <span class="protection-segment pending" id="protection-pending-bar" style="width:100%"></span>
+      </div>
+      <div class="protection-legend">
+        <div class="legend-item"><span class="legend-dot ready"></span><span class="legend-value" id="protection-ready">0</span> healthy</div>
+        <div class="legend-item"><span class="legend-dot attention"></span><span class="legend-value" id="protection-attention">0</span> need attention</div>
+        <div class="legend-item"><span class="legend-dot"></span><span class="legend-value" id="protection-pending">{{ library_count }}</span> awaiting a run</div>
+      </div>
+    </section>
+    <section class="recent-overview">
+      <div class="recent-overview-header">
+        <div class="overview-label">Recent activity</div>
+        <button class="text-link" onclick="showPage('history',document.getElementById('nav-history'))">See all →</button>
+      </div>
+      <div class="activity-list" id="dashboard-activity">
+        <div class="empty-msg" style="padding:28px 0;">No runs recorded yet</div>
+      </div>
+    </section>
+  </div>
   {% endif %}
   {% if config_error %}
   <div style="color:var(--fail2);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:7px;padding:10px;margin-bottom:16px;">
@@ -635,32 +741,38 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
       {% set cid = inst.name|replace(' ','_') ~ '_' ~ lib.name|replace(' ','_') %}
       <div class="lib-card idle" id="lc-{{ cid }}">
         <div class="lib-card-top">
-          <span class="lib-card-name">{{ lib.name }}</span>
+          <div class="lib-identity">
+            <span class="library-glyph">▶</span>
+            <span class="lib-card-name">{{ lib.name }}</span>
+          </div>
           <span class="type-chip {{ lib.type }}">{{ lib.type }}</span>
+        </div>
+        <div class="lib-state-row">
+          <div class="lib-state">
+            <span class="lib-state-dot" id="ls-dot-{{ cid }}"></span>
+            <span class="lib-state-text" id="ls-s-{{ cid }}">Awaiting first run</span>
+          </div>
+          <span class="lib-card-ts" id="ls-t-{{ cid }}">No run history</span>
         </div>
         <div class="lib-stats-row">
           <div class="lib-stat">
-            <div class="lib-stat-val" id="ls-s-{{ cid }}">—</div>
-            <div class="lib-stat-label">Status</div>
-          </div>
-          <div class="lib-stat">
             <div class="lib-stat-val" id="ls-r-{{ cid }}">—</div>
-            <div class="lib-stat-label">Removed</div>
+            <div class="lib-stat-label">Items removed</div>
           </div>
           <div class="lib-stat">
             <div class="lib-stat-val" id="ls-n-{{ cid }}">—</div>
-            <div class="lib-stat-label">Next Run</div>
+            <div class="lib-stat-label">Until next run</div>
           </div>
         </div>
         <div class="lib-card-footer">
-          <span class="lib-card-ts" id="ls-t-{{ cid }}">no runs yet</span>
+          <span style="font-size:11px;color:var(--muted);font-family:var(--mono);">{{ lib.cron }}</span>
           <div class="lib-card-actions">
-            <button class="btn btn-secondary btn-icon btn-sm" title="Dry run"
+            <button class="btn btn-secondary btn-sm" title="Dry run"
                     onclick='dryRunLib({{ inst.name | tojson }},{{ lib.name | tojson }})'
-                    id="btn-d-{{ cid }}">◎</button>
-            <button class="btn btn-primary btn-icon btn-sm" title="Run now"
+                    id="btn-d-{{ cid }}">◎ Dry run</button>
+            <button class="btn btn-primary btn-sm" title="Run now"
                     onclick='runLib({{ inst.name | tojson }},{{ lib.name | tojson }})'
-                    id="btn-r-{{ cid }}">▶</button>
+                    id="btn-r-{{ cid }}">▶ Run now</button>
           </div>
         </div>
       </div>
@@ -712,6 +824,9 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
         <button class="settings-nav-item" onclick="showSettingsSection('notifications',this)">
           🔔 Notifications
         </button>
+        <button class="settings-nav-item" onclick="showSettingsSection('general',this)">
+          ⚙️ General
+        </button>
         <button class="settings-nav-item" onclick="showSettingsSection('security',this)">
           🔒 Security
         </button>
@@ -745,7 +860,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
       <!-- Providers -->
       <div class="settings-section" id="ss-providers">
         <div class="settings-section-title">Debrid Providers</div>
-        <div class="settings-section-desc">Enter your API keys here — saved to config.yml. Alternatively set env vars in Docker UI (they take priority). Keys are only used for optional provider health checks.</div>
+        <div class="settings-section-desc">Enter API keys here to persist them in config.yml. Non-empty container variables remain optional overrides.</div>
 
         <div class="card" style="margin-bottom:16px;">
           <div class="card-header">
@@ -923,6 +1038,64 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
         </div>
       </div>
 
+      <!-- General -->
+      <div class="settings-section" id="ss-general">
+        <div class="settings-section-title">General</div>
+        <div class="settings-section-desc">Control application behavior and see where your configuration comes from.</div>
+
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header"><span class="card-title">Configuration storage</span><span class="badge success">UI managed</span></div>
+          <div class="card-body">
+            <div style="font-size:14px;color:var(--text2);line-height:1.75;margin-bottom:18px;">
+              Settings changed here are written to the persistent configuration file. A Compose
+              <code style="color:var(--accent2);">.env</code> file is optional and only supplies
+              environment overrides—it is not required for normal emptyarr configuration.
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;">
+                <div class="form-label">Primary configuration</div>
+                <code style="font-size:13px;color:var(--bright);word-break:break-all;">{{ config_path }}</code>
+              </div>
+              <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;">
+                <div class="form-label">Session key</div>
+                <div style="font-size:13px;color:var(--bright);">Generated and persisted automatically</div>
+              </div>
+            </div>
+            <div style="margin-top:18px;">
+              <div class="form-label">Active environment overrides</div>
+              {% if config_overrides %}
+              <div style="display:flex;gap:7px;flex-wrap:wrap;">
+                {% for override in config_overrides %}
+                <span class="inst-chip">{{ override }}</span>
+                {% endfor %}
+              </div>
+              <div class="form-hint">These non-empty container values take priority over matching file settings.</div>
+              {% else %}
+              <div style="color:var(--pass);font-size:13px;">None — configuration is fully UI/file managed.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">Logging</span></div>
+          <div class="card-body">
+            <div class="form-group" style="max-width:360px;">
+              <label class="form-label" for="s-log-level">Log level</label>
+              <select class="form-input" id="s-log-level">
+                <option value="DEBUG">Debug</option>
+                <option value="INFO">Info</option>
+                <option value="WARNING">Warning</option>
+                <option value="ERROR">Error</option>
+              </select>
+              <div class="form-hint">Applied immediately and saved to config.yml.</div>
+            </div>
+            <button class="btn btn-primary" onclick="settingsSave()">Save General Settings</button>
+            <span id="settings-save-result-general" style="margin-left:12px;font-size:12px;"></span>
+          </div>
+        </div>
+      </div>
+
       <!-- About -->
       <div class="settings-section" id="ss-about">
         <div class="settings-section-title">About emptyarr</div>
@@ -1062,6 +1235,16 @@ function fmtRel(iso) {
   const m = Math.floor(diff / 60), s = diff % 60;
   return m > 0 ? `${m}m` : `${s}s`;
 }
+function fmtAgo(iso) {
+  if (!iso) return '—';
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 function cid(i, l) { return i.replace(/ /g,'_') + '_' + l.replace(/ /g,'_'); }
 function statusCls(s) { return {success:'pass',skipped:'warn',error:'fail',dry_run:'info'}[s] || ''; }
 
@@ -1097,6 +1280,7 @@ function applyChecks(globalChecks) {
 }
 
 function applyStatus(data, nextRuns) {
+  const summary = {ready: 0, attention: 0, pending: 0};
   _instances.forEach(inst => {
     const instData = (data.instances || []).find(i => i.name === inst.name) || {};
     (instData.libraries || []).forEach(lib => {
@@ -1104,8 +1288,14 @@ function applyStatus(data, nextRuns) {
       const st = lib.status || {};
       const card = document.getElementById(`lc-${id}`);
       if (card) card.className = `lib-card ${st.last_status || 'idle'}`;
+      const labels = {success:'Healthy',skipped:'Skipped',error:'Needs attention',dry_run:'Dry run passed'};
       const sv = document.getElementById(`ls-s-${id}`);
-      if (sv) { sv.textContent = st.last_status ? st.last_status.toUpperCase() : '—'; sv.className = `lib-stat-val ${statusCls(st.last_status)}`; }
+      if (sv) sv.textContent = labels[st.last_status] || 'Awaiting first run';
+      const dot = document.getElementById(`ls-dot-${id}`);
+      if (dot) dot.className = `lib-state-dot ${statusCls(st.last_status)}`;
+      if (st.last_status === 'success' || st.last_status === 'dry_run') summary.ready++;
+      else if (st.last_status === 'error' || st.last_status === 'skipped') summary.attention++;
+      else summary.pending++;
       const rv = document.getElementById(`ls-r-${id}`);
       if (rv) { rv.textContent = st.removed_count != null ? st.removed_count : '—'; rv.className = `lib-stat-val ${st.removed_count > 0 ? 'pass' : ''}`; }
       const key = `${inst.name}::${lib.name}`;
@@ -1115,6 +1305,59 @@ function applyStatus(data, nextRuns) {
       if (tv && st.last_run) tv.innerHTML = `<b>${fmtTime(st.last_run)}</b>`;
     });
   });
+  updateProtectionOverview(summary);
+}
+
+function updateProtectionOverview(summary) {
+  const total = summary.ready + summary.attention + summary.pending || 1;
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  };
+  setText('protection-ready', summary.ready);
+  setText('protection-attention', summary.attention);
+  setText('protection-pending', summary.pending);
+  [
+    ['protection-ready-bar', summary.ready],
+    ['protection-attention-bar', summary.attention],
+    ['protection-pending-bar', summary.pending],
+  ].forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.width = `${value / total * 100}%`;
+  });
+  const title = document.getElementById('protection-title');
+  const copy = document.getElementById('protection-copy');
+  if (!title || !copy) return;
+  if (summary.attention) {
+    title.textContent = `${summary.attention} ${summary.attention === 1 ? 'library needs' : 'libraries need'} attention`;
+    copy.textContent = 'A health check was skipped or failed. Review activity before emptying trash.';
+  } else if (summary.pending) {
+    title.textContent = summary.ready ? 'Protection is coming online' : 'Ready for the first protection run';
+    copy.textContent = `${summary.pending} ${summary.pending === 1 ? 'library has' : 'libraries have'} not completed a run yet.`;
+  } else {
+    title.textContent = 'All libraries are protected';
+    copy.textContent = 'Every monitored library completed its latest safety run successfully.';
+  }
+}
+
+function renderDashboardActivity(data) {
+  const container = document.getElementById('dashboard-activity');
+  if (!container) return;
+  const recent = (data || []).slice(0, 4);
+  if (!recent.length) {
+    container.innerHTML = '<div class="empty-msg" style="padding:28px 0;">No runs recorded yet</div>';
+    return;
+  }
+  container.innerHTML = recent.map(run => `
+    <div class="activity-item">
+      <span class="activity-status ${h(run.status)}"></span>
+      <div style="min-width:0;">
+        <div class="activity-name">${h(run.library)} · ${h(run.message || run.status)}</div>
+        <div class="activity-instance">${h(run.instance)}</div>
+      </div>
+      <span class="activity-time">${fmtAgo(run.timestamp)}</span>
+    </div>
+  `).join('');
 }
 
 // ── History ───────────────────────────────────────────────────────────────────
@@ -1125,6 +1368,7 @@ function setFilter(f, btn) {
   renderHistory(_history);
 }
 function renderHistory(data) {
+  renderDashboardActivity(data);
   const filtered = _filter === 'all' ? data : data.filter(r => r.status === _filter);
   const hc = document.getElementById('hcount');
   if (hc) hc.textContent = `${filtered.length} / ${data.length} runs`;
@@ -1173,7 +1417,7 @@ function toggleExpand(rid, row) {
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-let _settingsData = { instances: [], discord_webhook: '', notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
+let _settingsData = { instances: [], discord_webhook: '', log_level: 'INFO', notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
 
 async function loadSettings() {
   try {
@@ -1182,6 +1426,7 @@ async function loadSettings() {
     if (!d.ok) { toast('Could not load config', 'fail'); return; }
     const cfg = d.config || {};
     _settingsData.discord_webhook    = cfg.discord_webhook || '';
+    _settingsData.log_level          = cfg.log_level || 'INFO';
     _settingsData.notify_emptied     = cfg.notify?.on_emptied     ?? cfg.notify?.on_success ?? true;
     _settingsData.notify_health_fail = cfg.notify?.on_health_fail ?? cfg.notify?.on_failure ?? true;
     _settingsData.notify_error       = cfg.notify?.on_error       ?? true;
@@ -1208,6 +1453,8 @@ async function loadSettings() {
     renderSettingsInstances();
     // Populate notification fields
     document.getElementById('s-discord').value = _settingsData.discord_webhook;
+    const logLevel = document.getElementById('s-log-level');
+    if (logLevel) logLevel.value = _settingsData.log_level;
     document.getElementById('s-notify-emptied').checked     = cfg.notify?.on_emptied     ?? cfg.notify?.on_success ?? true;
     document.getElementById('s-notify-health-fail').checked = cfg.notify?.on_health_fail  ?? cfg.notify?.on_failure ?? true;
     document.getElementById('s-notify-error').checked       = cfg.notify?.on_error        ?? true;
@@ -1248,7 +1495,7 @@ function renderSettingsInstances() {
           <div class="form-group">
             <label class="form-label">Instance Name</label>
             <input class="form-input" value="${h(inst.name)}" onchange="_settingsData.instances[${ii}].name=this.value;renderSettingsInstances()" />
-            <div class="form-hint">Env var: <code style="color:var(--accent2)">PLEX_TOKEN_${h(inst.name.toUpperCase().replace(/ /g,'_').replace(/-/g,'_'))}</code></div>
+            <div class="form-hint">Saved to config.yml; optional override: <code style="color:var(--accent2)">PLEX_TOKEN_${h(inst.name.toUpperCase().replace(/ /g,'_').replace(/-/g,'_'))}</code></div>
           </div>
           <div class="form-group">
             <label class="form-label">Plex URL</label>
@@ -1256,8 +1503,8 @@ function renderSettingsInstances() {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Token (optional — leave blank to use env var)</label>
-          <input class="form-input" type="password" value="${h(inst.token||'')}" placeholder="Set via PLEX_TOKEN_… env var (recommended)"
+          <label class="form-label">Plex token</label>
+          <input class="form-input" type="password" value="${h(inst.token||'')}" placeholder="Saved in persistent config.yml"
                  onchange="_settingsData.instances[${ii}].token=this.value" />
         </div>
         <hr class="divider"/>
@@ -1459,6 +1706,7 @@ function removePath(ii, li, pi, source = '_settingsData') {
 async function settingsSave() {
   // Collect notification settings
   _settingsData.discord_webhook   = document.getElementById('s-discord').value.trim();
+  _settingsData.log_level         = document.getElementById('s-log-level')?.value || 'INFO';
   _settingsData.notify_emptied    = document.getElementById('s-notify-emptied').checked;
   _settingsData.notify_health_fail= document.getElementById('s-notify-health-fail').checked;
   _settingsData.notify_error      = document.getElementById('s-notify-error').checked;
@@ -1477,7 +1725,7 @@ async function settingsSave() {
       body: JSON.stringify({ ..._settingsData, store_tokens: true })
     });
     const d = await r.json();
-    ['settings-save-result','settings-save-result2'].forEach(id => {
+    ['settings-save-result','settings-save-result2','settings-save-result-general'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = d.ok
         ? `<span style="color:var(--pass);">✓ Saved and applied</span>`
@@ -2232,6 +2480,7 @@ if (!_configMissing) {
   setInterval(fetchStatus, 15000);
   setInterval(fetchHistory, 30000);
   fetchStatus();
+  fetchHistory();
   initAuthBanner();
 }
 </script>

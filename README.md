@@ -47,26 +47,28 @@ docker build -t emptyarr:latest .
 
 > **Slave propagation required for FUSE mounts:** The symlink media volume must use `slave` propagation (`:ro,slave`) so that FUSE mounts created by tools like Decypharr or zurg after the container starts are visible inside the container. Without `slave`, the container sees a stale snapshot of the host mount namespace and the FUSE filesystem will appear empty or missing.
 
-**Environment variables:**
+**Container runtime variables:**
 
 | Variable | Default | Description |
 |---|---|---|
 | `PUID` | — | User ID for file permissions. `99` on Unraid (nobody) |
 | `PGID` | — | Group ID for file permissions. `100` on Unraid (users) |
 | `TZ` | — | Timezone, e.g. `America/New_York` |
-| `PLEX_TOKEN_<NAME>` | — | Plex token per instance. Name is the instance name uppercased with spaces/hyphens as underscores: `PLEX_TOKEN_MY_PLEX`, `PLEX_TOKEN_MY_PLEX_UNLIMITED`, etc. Can also be entered in the UI |
-| `EMPTYARR_SECRET_KEY` | random | Stable session key — set this so users aren't logged out on every restart. Generate with `openssl rand -hex 32` |
-| `EMPTYARR_USERNAME` | — | Web UI login username. Leave unset to disable auth |
-| `EMPTYARR_PASSWORD` | — | Web UI login password. Leave unset to disable auth |
-| `RD_API_KEY` | — | Real-Debrid API key (alternative to setting it in the UI) |
-| `AD_API_KEY` | — | AllDebrid API key |
-| `TB_API_KEY` | — | Torbox API key |
-| `DL_API_KEY` | — | DebridLink API key |
 | `CONFIG_PATH` | `data/config.yml` | Path to the config file |
 | `LOG_DIR` | `data/logs` | Directory where log files are written |
 | `BROWSE_ROOTS` | `/mnt,/media,/data,/home` | Comma-separated list of root paths the file browser is allowed to enter |
 | `FLASK_HOST` | `127.0.0.1` | Network interface to bind to. Set to `0.0.0.0` if you need external access or are using a reverse proxy |
 | `SESSION_COOKIE_SECURE` | `false` | Set to `true` when serving over HTTPS — marks the session cookie as Secure so it's never sent over plain HTTP |
+
+Plex tokens, provider keys, Discord notifications, web authentication, schedules,
+and logging are all configurable in the UI and persist in `data/config.yml`.
+The session key is generated once and persisted automatically in the data
+directory.
+
+Non-empty environment variables such as `PLEX_TOKEN_<NAME>`, `RD_API_KEY`,
+`DISCORD_WEBHOOK`, or `EMPTYARR_USERNAME` remain supported as optional
+deployment-managed overrides. A Compose `.env` file only supplies those
+environment overrides; it is not emptyarr's primary configuration file.
 
 ### First run
 
@@ -81,8 +83,8 @@ available as a fallback.
 
 Config lives at `/app/data/config.yml` (your host's data directory). The Settings
 page can validate and apply changes immediately, including additions, removals,
-schedules, and paths. Restart only after changing Docker environment variables
-or volume mappings.
+schedules, paths, credentials, notifications, authentication, and log level.
+Restart only after changing container runtime variables or volume mappings.
 
 ### Library types
 
@@ -104,6 +106,7 @@ Per-library. Standard cron syntax. `0 * * * *` runs every hour on the hour, `*/3
 ### Example config
 
 ```yaml
+log_level: INFO
 discord_webhook: https://discord.com/api/webhooks/...
 notify:
   on_emptied: true

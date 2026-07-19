@@ -1,6 +1,7 @@
 # Secrets — never commit
 .env
 data/config.yml
+**/.session-key
 
 # Python
 __pycache__/

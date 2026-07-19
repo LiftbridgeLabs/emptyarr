@@ -15,7 +15,8 @@
 
     Use the built-in setup wizard at http://[IP]:8222 to configure your
     Plex instances and libraries — no manual config file editing required.
-    Set your Plex tokens and API keys as environment variables below.
+    Plex tokens, provider keys, notifications, auth, and schedules are saved
+    through the web UI. Container variables below are optional overrides.
   </Overview>
   <Category>MediaApp:Video Tools:</Category>
   <Icon>https://raw.githubusercontent.com/LiftbridgeLabs/emptyarr/main/static/icon.png</Icon>
@@ -66,25 +67,14 @@
           Required="false"
           Mask="false">/mnt/user/media</Config>
 
-  <!-- ── Session key ──────────────────────────────────────────────────────── -->
-  <Config Name="Secret Key"
-          Target="EMPTYARR_SECRET_KEY"
-          Default=""
-          Mode=""
-          Description="Stable session key so users aren't logged out on every container restart. Generate with: openssl rand -hex 32"
-          Type="Variable"
-          Display="always"
-          Required="false"
-          Mask="true"></Config>
-
   <!-- ── Web UI auth ────────────────────────────────────────────────────── -->
   <Config Name="Web UI Username (optional)"
           Target="EMPTYARR_USERNAME"
           Default=""
           Mode=""
-          Description="Username to protect the web UI with basic auth. Leave blank to disable authentication (fine for local network use)."
+          Description="Optional environment override. Web authentication is normally configured in emptyarr Settings."
           Type="Variable"
-          Display="always"
+          Display="advanced"
           Required="false"
           Mask="false"></Config>
 
@@ -92,9 +82,9 @@
           Target="EMPTYARR_PASSWORD"
           Default=""
           Mode=""
-          Description="Password to protect the web UI. Only used if Username is also set."
+          Description="Optional environment override. Only used when the username override is also set."
           Type="Variable"
-          Display="always"
+          Display="advanced"
           Required="false"
           Mask="true"></Config>
 
@@ -103,9 +93,9 @@
           Target="PLEX_TOKEN_INSTANCE_1"
           Default=""
           Mode=""
-          Description="Plex token for your first instance. Rename this variable to match your instance name from the wizard — uppercased with spaces/hyphens as underscores. Example: instance 'My Plex' uses PLEX_TOKEN_MY_PLEX. Find token at: https://support.plex.tv/articles/204059436"
+          Description="Optional environment override. Plex sign-in and token storage are normally managed in the emptyarr UI."
           Type="Variable"
-          Display="always"
+          Display="advanced"
           Required="false"
           Mask="true"></Config>
 
@@ -113,7 +103,7 @@
           Target="PLEX_TOKEN_INSTANCE_2"
           Default=""
           Mode=""
-          Description="Plex token for a second instance (if you have one). Rename to match your instance name."
+          Description="Optional environment override for a second Plex instance."
           Type="Variable"
           Display="always"
           Required="false"
@@ -124,9 +114,9 @@
           Target="RD_API_KEY"
           Default=""
           Mode=""
-          Description="Real-Debrid API key for provider health checks. Optional — leave blank to skip. Get yours at: https://real-debrid.com/apitoken"
+          Description="Optional environment override. Provider keys are normally saved in emptyarr Settings."
           Type="Variable"
-          Display="always"
+          Display="advanced"
           Required="false"
           Mask="true"></Config>
 
@@ -165,9 +155,9 @@
           Target="DISCORD_WEBHOOK"
           Default=""
           Mode=""
-          Description="Discord webhook URL for notifications. Optional — configure in the setup wizard instead."
+          Description="Optional environment override. Configure notifications in emptyarr Settings for normal use."
           Type="Variable"
-          Display="always"
+          Display="advanced"
           Required="false"
           Mask="false"></Config>
 

@@ -15,7 +15,7 @@ os.environ.setdefault("PLEX_CLIENT_ID_FILE", str(_TEST_ROOT / ".runtime-client.j
 import app
 from src.checks import check_file_threshold
 from src.config import (AppConfig, LibraryConfig, PathConfig,
-                        PlexInstanceConfig, ProviderCheck)
+                        PlexInstanceConfig, ProviderCheck, parse_config)
 from src.plex_client import PlexClient
 from src import runner
 from src import plex_auth
@@ -43,6 +43,50 @@ class WebSecurityTests(unittest.TestCase):
     def test_metadata_address_is_rejected(self):
         ok, _ = app._is_valid_plex_url("http://169.254.10.10:32400")
         self.assertFalse(ok)
+
+
+class ConfigPrecedenceTests(unittest.TestCase):
+    def test_empty_environment_values_do_not_override_file_settings(self):
+        raw = {
+            "discord_webhook": "https://discord.example/hook",
+            "log_level": "DEBUG",
+            "plex_instances": [{
+                "name": "Plex",
+                "url": "http://plex:32400",
+                "token": "saved-token",
+                "libraries": [],
+            }],
+        }
+        overrides = {
+            "DISCORD_WEBHOOK": "",
+            "LOG_LEVEL": "",
+            "PLEX_URL": "",
+            "PLEX_TOKEN": "",
+            "PLEX_URL_PLEX": "",
+            "PLEX_TOKEN_PLEX": "",
+        }
+        with patch.dict(os.environ, overrides):
+            parsed = parse_config(raw)
+        self.assertEqual(parsed.discord_webhook, raw["discord_webhook"])
+        self.assertEqual(parsed.log_level, "DEBUG")
+        self.assertEqual(parsed.instances[0].url, "http://plex:32400")
+        self.assertEqual(parsed.instances[0].token, "saved-token")
+
+    def test_session_key_is_generated_once_and_persisted(self):
+        key_path = Path("tests/.runtime-session-key").resolve()
+        key_path.unlink(missing_ok=True)
+        overrides = {
+            "EMPTYARR_SECRET_KEY": "",
+            "EMPTYARR_SECRET_KEY_FILE": str(key_path),
+        }
+        try:
+            with patch.dict(os.environ, overrides):
+                first = app._load_session_key()
+                second = app._load_session_key()
+            self.assertEqual(first, second)
+            self.assertEqual(key_path.read_text(encoding="utf-8"), first)
+        finally:
+            key_path.unlink(missing_ok=True)
 
 
 class PlexAuthTests(unittest.TestCase):

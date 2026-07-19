@@ -24,35 +24,10 @@ services:
       - /mnt/user/media:/mnt/user/media:ro
 
     environment:
-      # ── Plex tokens ──────────────────────────────────────────────────────────
-      # One variable per Plex instance, named after the instance name:
-      # uppercased, spaces/hyphens → underscores, prefixed with PLEX_TOKEN_
-      # Example: instance "My Plex" → PLEX_TOKEN_MY_PLEX
-      # Uncomment and rename to match your instance names:
-      # - PLEX_TOKEN_MY_INSTANCE=${PLEX_TOKEN_MY_INSTANCE:-}
-
-      # ── Debrid provider API keys (optional) ──────────────────────────────────
-      - RD_API_KEY=${RD_API_KEY:-}
-      - AD_API_KEY=${AD_API_KEY:-}
-      - TB_API_KEY=${TB_API_KEY:-}
-      - DL_API_KEY=${DL_API_KEY:-}
-
-      # ── Session key (recommended) ────────────────────────────────────────────
-      # Stable key so users aren't logged out on every restart.
-      # Generate with: openssl rand -hex 32
-      - EMPTYARR_SECRET_KEY=${EMPTYARR_SECRET_KEY:-}
-
-      # ── Web UI auth (optional but recommended) ───────────────────────────────
-      # If set, the web UI will require a username and password.
-      # Leave blank to disable auth (fine for local-only access).
-      - EMPTYARR_USERNAME=${EMPTYARR_USERNAME:-}
-      - EMPTYARR_PASSWORD=${EMPTYARR_PASSWORD:-}
-
-      # ── Notifications ─────────────────────────────────────────────────────────
-      - DISCORD_WEBHOOK=${DISCORD_WEBHOOK:-}
-
-      # ── Other ─────────────────────────────────────────────────────────────────
+      # Configure Plex, providers, notifications, auth, and logging in the UI.
+      # Those settings persist in ./data/config.yml. Non-empty environment
+      # variables can still be added here as deployment-managed overrides.
+      # Only these container runtime settings normally belong here:
       - PUID=99
       - PGID=100
       - TZ=America/New_York
-      - LOG_LEVEL=INFO
