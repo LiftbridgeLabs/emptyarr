@@ -26,7 +26,7 @@ All checks pass → trash gets emptied. Any check fails → skip, log it, notify
 ```bash
 mkdir -p /mnt/cache/appdata/emptyarr/data
 cd /mnt/cache/appdata/emptyarr
-git clone https://github.com/jjbobz/emptyarr.git .
+git clone https://github.com/LiftbridgeLabs/emptyarr.git .
 docker build -t emptyarr:latest .
 ```
 

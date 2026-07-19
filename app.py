@@ -23,6 +23,7 @@ from src.providers import get_account_status, get_api_key
 from src.providers import _ENV_KEYS as _PROVIDER_ENV_KEYS
 from src.storage import atomic_write_yaml
 from src import plex_auth
+from src.version import __version__
 
 LOG_DIR  = os.environ.get("LOG_DIR", "data/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -375,7 +376,7 @@ def login():
             return redirect(url_for("index"))
         else:
             error = "Invalid username or password"
-    return render_template("login.html", error=error)
+    return render_template("login.html", error=error, app_version=__version__)
 
 
 @app.route("/logout", methods=["GET"])
@@ -387,13 +388,17 @@ def logout():
 @app.route("/", methods=["GET"])
 @require_auth
 def index():
+    ui_instances = _build_ui_instances()
     return render_template("index.html",
-        instances=_build_ui_instances(),
+        instances=ui_instances,
+        instance_count=len(ui_instances),
+        library_count=sum(len(instance["libraries"]) for instance in ui_instances),
         config_missing=config.config_missing,
         auth_enabled=auth_enabled(config),
         config=config,
         csrf_token=_csrf_token(),
         config_error=CONFIG_LOAD_ERROR,
+        app_version=__version__,
     )
 
 
@@ -408,6 +413,7 @@ def api_status():
         "scheduling_enabled": get_scheduling_enabled(),
         "config_missing":     config.config_missing,
         "auth_enabled":       auth_enabled(config),
+        "version":            __version__,
     })
 
 
