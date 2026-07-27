@@ -673,7 +673,32 @@ def api_browse():
     ]
 
     data = request.get_json(silent=True) or {}
-    raw_path = data.get("path", _browse_roots[0] if _browse_roots else "/")
+    raw_path = data.get("path")
+
+    # An empty path represents a virtual root containing only the configured
+    # browse roots. This lets the UI offer multiple safe starting locations
+    # without granting access to the container's actual filesystem root.
+    if raw_path is None or str(raw_path).strip() == "":
+        entries = []
+        for root in _browse_roots:
+            if os.path.isdir(root):
+                entries.append({
+                    "name": root,
+                    "path": root,
+                    "is_link": os.path.islink(root),
+                })
+        return jsonify({
+            "ok": True,
+            "path": "",
+            "parent": None,
+            "entries": entries,
+            "selectable": False,
+            "empty_message": (
+                "No allowed browse roots are available. Check the container "
+                "volume mappings or BROWSE_ROOTS."
+            ),
+        })
+
     try:
         # Resolve symlinks and normalise to prevent traversal tricks (e.g. ../../etc)
         path = os.path.realpath(os.path.normpath(raw_path))
@@ -695,11 +720,20 @@ def api_browse():
                 })
         # Compute parent, but only if it is still within an allowed root
         raw_parent = os.path.dirname(path)
-        parent = raw_parent if (raw_parent != path and any(
-            raw_parent == root or raw_parent.startswith(root.rstrip("/") + "/")
-            for root in _browse_roots
-        )) else None
-        return jsonify({"ok": True, "path": path, "parent": parent, "entries": entries})
+        if path in _browse_roots:
+            parent = ""
+        else:
+            parent = raw_parent if (raw_parent != path and any(
+                raw_parent == root or raw_parent.startswith(root.rstrip("/") + "/")
+                for root in _browse_roots
+            )) else None
+        return jsonify({
+            "ok": True,
+            "path": path,
+            "parent": parent,
+            "entries": entries,
+            "selectable": True,
+        })
     except PermissionError:
         return jsonify({"ok": False, "error": f"Permission denied: {path}"}), 403
     except Exception as e:

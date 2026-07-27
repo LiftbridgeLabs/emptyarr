@@ -1,5 +1,4 @@
 import os
-import tempfile
 import threading
 import time
 import unittest
@@ -43,6 +42,53 @@ class WebSecurityTests(unittest.TestCase):
     def test_metadata_address_is_rejected(self):
         ok, _ = app._is_valid_plex_url("http://169.254.10.10:32400")
         self.assertFalse(ok)
+
+    def test_browse_opens_at_allowed_roots_and_stays_inside_them(self):
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_csrf_token"] = "known-token"
+        headers = {"X-CSRF-Token": "known-token"}
+
+        first = os.path.abspath("browse-root-one")
+        second = os.path.abspath("browse-root-two")
+        child = os.path.join(first, "Movies")
+        directory = Mock()
+        directory.name = "Movies"
+        directory.path = child
+        directory.is_dir.return_value = True
+        directory.is_symlink.return_value = False
+
+        with patch.dict(os.environ, {"BROWSE_ROOTS": f"{first},{second}"}), \
+             patch("app.os.path.isdir", return_value=True), \
+             patch("app.os.path.islink", return_value=False), \
+             patch("app.os.path.exists", return_value=True), \
+             patch("app.os.scandir", return_value=[directory]):
+            response = client.post("/api/wizard/browse", json={}, headers=headers)
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertFalse(payload["selectable"])
+            self.assertEqual(
+                {entry["path"] for entry in payload["entries"]},
+                {os.path.realpath(first), os.path.realpath(second)},
+            )
+
+            response = client.post(
+                "/api/wizard/browse",
+                json={"path": first},
+                headers=headers,
+            )
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertTrue(payload["selectable"])
+            self.assertEqual(payload["parent"], "")
+            self.assertEqual(payload["entries"][0]["name"], "Movies")
+
+            response = client.post(
+                "/api/wizard/browse",
+                json={"path": str(Path(first).parent)},
+                headers=headers,
+            )
+            self.assertEqual(response.status_code, 403)
 
 
 class ConfigPrecedenceTests(unittest.TestCase):

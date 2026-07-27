@@ -1749,8 +1749,9 @@ async function settingsSave() {
 // ── File browser ──────────────────────────────────────────────────────────────
 let _browserCb = null;
 async function openBrowser(ii, li) {
-  _browserCb = (path) => { document.getElementById(`apf-path-${ii}-${li}`).value = path; };
-  await showBrowser('/');
+  const input = document.getElementById(`apf-path-${ii}-${li}`);
+  _browserCb = (path) => { input.value = path; };
+  await showBrowser(input.value.trim());
 }
 async function showBrowser(path) {
   try {
@@ -1767,7 +1768,11 @@ async function showBrowser(path) {
             <span class="browser-entry-name">${h(e.name)}</span>
             ${e.is_link ? '<span class="browser-entry-link">symlink</span>' : ''}
           </div>`).join('')
-      : '<div style="padding:16px;color:var(--muted);font-size:12px;">Empty directory</div>';
+      : `<div style="padding:16px;color:var(--muted);font-size:12px;">${h(d.empty_message || 'Empty directory')}</div>`;
+    const displayPath = d.path || 'Allowed browse roots';
+    const selectButton = d.selectable === false
+      ? ''
+      : '<button class="btn btn-success btn-sm" id="_browser-select">Use this path</button>';
     modal.innerHTML = `
       <div class="browser-inner">
         <div class="browser-header">
@@ -1776,17 +1781,18 @@ async function showBrowser(path) {
         </div>
         <div class="browser-path-bar">
           ${d.parent !== null ? `<span style="cursor:pointer;color:var(--info2);" id="_browser-up">← up</span>` : ''}
-          <span>${h(d.path)}</span>
+          <span>${h(displayPath)}</span>
         </div>
         <div class="browser-list" id="_browser-list">${entriesHtml}</div>
         <div class="browser-footer">
-          <span class="browser-current">${h(d.path)}</span>
-          <button class="btn btn-success btn-sm" id="_browser-select">Use this path</button>
+          <span class="browser-current">${h(displayPath)}</span>
+          ${selectButton}
         </div>
       </div>`;
     // Wire up handlers after render — avoids onclick string interpolation with path values
     modal.querySelector('#_browser-close').onclick = () => modal.remove();
-    modal.querySelector('#_browser-select').onclick = () => selectPath(d.path);
+    const select = modal.querySelector('#_browser-select');
+    if (select) select.onclick = () => selectPath(d.path);
     if (d.parent !== null) modal.querySelector('#_browser-up').onclick = () => showBrowser(d.parent);
     modal.querySelectorAll('.browser-entry[data-path]').forEach(el => {
       el.onclick = () => showBrowser(el.dataset.path);
@@ -2168,7 +2174,11 @@ function renderWiz2(body, next) {
   document.getElementById('wiz-paths-content').innerHTML=html||'<div style="color:var(--muted);">No libraries. Go back to Step 1.</div>';
 }
 function showWizPathForm(ii,li){document.getElementById(`wpf-${ii}-${li}`).classList.add('open');}
-function openWizBrowser(ii,li){_browserCb=(p)=>{document.getElementById(`wpp-${ii}-${li}`).value=p;};showBrowser('/');}
+function openWizBrowser(ii,li){
+  const input=document.getElementById(`wpp-${ii}-${li}`);
+  _browserCb=(p)=>{input.value=p;};
+  showBrowser(input.value.trim());
+}
 function addWizPath(ii,li){
   const path=document.getElementById(`wpp-${ii}-${li}`).value.trim();
   const type=document.getElementById(`wpt-${ii}-${li}`).value;
