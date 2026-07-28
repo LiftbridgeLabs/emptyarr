@@ -7,6 +7,20 @@ this file is not included in the published Docker image.
 The authoritative workflow is `.github/workflows/docker-publish.yml`. A failed
 step stops the build before Docker Hub login and publication.
 
+## Pre-commit checks
+
+Command:
+
+```shell
+pre-commit run --all-files --show-diff-on-failure
+```
+
+The build installs the pinned `pre-commit` version declared in the workflow and
+runs every hook configured in `.pre-commit-config.yaml` against the repository.
+This currently includes secret scanning with Gitleaks plus the configured file
+cleanliness and syntax checks. A hook failure stops the build before tests,
+Docker Hub login, or image publication.
+
 ## Unit and safety suite
 
 Command:
