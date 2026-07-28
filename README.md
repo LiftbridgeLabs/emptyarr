@@ -19,35 +19,46 @@ All checks pass → trash gets emptied. Any check fails → skip, log it, notify
 
 ---
 
-## Setup (Unraid)
+## Installation
 
-### Build
+### Unraid WebUI (recommended)
 
-```bash
-mkdir -p /mnt/cache/appdata/emptyarr/data
-cd /mnt/cache/appdata/emptyarr
-git clone https://github.com/LiftbridgeLabs/emptyarr.git .
-docker build -t emptyarr:latest .
-```
+Emptyarr is distributed as a prebuilt Docker image. A normal Unraid installation
+does not require the terminal, a Git checkout, or a local image build.
 
-### Container settings
+If an Emptyarr template is available in your Apps feed, install it there.
+Otherwise, open **Docker → Add Container** and configure:
 
-**Network:** your arr network (e.g. `arr_net`)  
-**Port:** `8222`
+| Setting | Value |
+|---|---|
+| Name | `emptyarr` |
+| Repository | `liftbridgelabs/emptyarr:latest` |
+| Network | `bridge` or the custom Docker network used by your media applications |
+| Container port | `8222` |
+| Host port | `8222` or another available port |
+| WebUI | `http://[IP]:[PORT:8222]/` |
+
+Add these path mappings in the container editor:
 
 **Path mappings:**
 
 | Host | Container | Mode |
 |---|---|---|
 | `/mnt/cache/appdata/emptyarr/data` | `/app/data` | Read/Write |
-| `/mnt/symlink_media` | `/symlink_media` | Read Only - Slave |
+| `/mnt/symlink_media` | `/mnt/symlink_media` | Read Only - Slave |
 | `/mnt/user/media` | `/mnt/user/media` | Read Only |
 
-> The container path for symlink media needs to match what your symlinks actually point to. Check with `ls -la /mnt/symlink_media/symlinks/radarr/ | head -3` and look at the symlink targets. If they start with `/symlink_media/` (no `/mnt`), use that as the container path.
+The host paths are examples; select the paths used by your own Unraid setup.
+Container paths are what Emptyarr displays and saves in its library settings.
+
+> The container path for symlink media must match what the symlinks actually
+> point to. For example, if their targets begin with `/symlink_media/`, use
+> `/symlink_media` as the container path instead of `/mnt/symlink_media`.
 
 > **Slave propagation required for FUSE mounts:** The symlink media volume must use `slave` propagation (`:ro,slave`) so that FUSE mounts created by tools like Decypharr or zurg after the container starts are visible inside the container. Without `slave`, the container sees a stale snapshot of the host mount namespace and the FUSE filesystem will appear empty or missing.
 
-**Container runtime variables:**
+Add the following variables under **Add another Path, Port, Variable, Label or
+Device → Variable**:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -57,8 +68,11 @@ docker build -t emptyarr:latest .
 | `CONFIG_PATH` | `data/config.yml` | Path to the config file |
 | `LOG_DIR` | `data/logs` | Directory where log files are written |
 | `BROWSE_ROOTS` | `/mnt,/media,/data,/home` | Comma-separated list of root paths the file browser is allowed to enter |
-| `FLASK_HOST` | `127.0.0.1` | Network interface to bind to. Set to `0.0.0.0` if you need external access or are using a reverse proxy |
 | `SESSION_COOKIE_SECURE` | `false` | Set to `true` when serving over HTTPS — marks the session cookie as Secure so it's never sent over plain HTTP |
+
+`PUID=99`, `PGID=100`, and your local `TZ` are the only variables most Unraid
+installations need. After selecting **Apply**, open the WebUI from the Docker
+page.
 
 Plex tokens, provider keys, Discord notifications, web authentication, schedules,
 and logging are all configurable in the UI and persist in `data/config.yml`.
@@ -70,12 +84,55 @@ Non-empty environment variables such as `PLEX_TOKEN_<NAME>`, `RD_API_KEY`,
 deployment-managed overrides. A Compose `.env` file only supplies those
 environment overrides; it is not emptyarr's primary configuration file.
 
+### Docker Compose
+
+For Unraid Compose Manager or any other Compose installation, create a Compose
+file using the published image:
+
+```yaml
+services:
+  emptyarr:
+    image: liftbridgelabs/emptyarr:latest
+    container_name: emptyarr
+    restart: unless-stopped
+    ports:
+      - "8222:8222"
+    environment:
+      PUID: "99"
+      PGID: "100"
+      TZ: America/Denver
+    volumes:
+      - /mnt/cache/appdata/emptyarr/data:/app/data
+      - /mnt/symlink_media:/mnt/symlink_media:ro,slave
+      - /mnt/user/media:/mnt/user/media:ro
+```
+
+Change the timezone, port, and host paths for your system. If Emptyarr must
+reach Plex by container name, attach it to the same custom Docker network as
+Plex.
+
 ### First run
 
 Open `http://YOUR_IP:8222` and run through the setup wizard. You can connect
 your Plex account in the browser to discover servers and libraries automatically;
 emptyarr never receives your Plex password. Manual URL/token setup remains
 available as a fallback.
+
+---
+
+## Building from source
+
+Local builds are intended for development or testing changes that are not yet
+in the published image:
+
+```bash
+git clone https://github.com/LiftbridgeLabs/emptyarr.git
+cd emptyarr
+docker build -t emptyarr:local .
+```
+
+Normal Unraid and Compose installations should use
+`liftbridgelabs/emptyarr:latest` instead.
 
 ---
 
@@ -150,14 +207,14 @@ plex_instances:
           - path: /mnt/user/media/movies
             type: physical
             min_threshold: 90
-          - path: /symlink_media/symlinks/radarr
+          - path: /mnt/symlink_media/symlinks/radarr
             type: debrid
             min_threshold: 90
       - name: TV Shows
         type: debrid
         cron: "0 * * * *"
         paths:
-          - path: /symlink_media/symlinks/sonarr
+          - path: /mnt/symlink_media/symlinks/sonarr
             type: debrid
             min_threshold: 90
 ```
@@ -186,11 +243,17 @@ Five separate Discord notification events you can toggle independently:
 
 ## Updating
 
+### Unraid WebUI
+
+From the **Docker** page, use **Check for Updates**, then apply the update for
+Emptyarr. Unraid pulls the current `liftbridgelabs/emptyarr:latest` image and recreates
+the container while preserving everything mapped to `/app/data`.
+
+### Docker Compose
+
 ```bash
-cd /mnt/cache/appdata/emptyarr
-git pull
-docker build -t emptyarr:latest .
-# restart in Unraid UI
+docker compose pull emptyarr
+docker compose up -d emptyarr
 ```
 
 ---

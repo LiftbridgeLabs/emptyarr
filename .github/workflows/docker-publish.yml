@@ -26,5 +26,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/emptyarr:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/emptyarr:${{ github.sha }}
+            liftbridgelabs/emptyarr:latest
+            liftbridgelabs/emptyarr:${{ github.sha }}

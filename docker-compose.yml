@@ -1,6 +1,6 @@
 services:
   emptyarr:
-    build: .
+    image: liftbridgelabs/emptyarr:latest
     container_name: emptyarr
     restart: unless-stopped
     ports:

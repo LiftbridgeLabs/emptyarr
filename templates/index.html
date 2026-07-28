@@ -285,7 +285,9 @@ nav{
 .recent-overview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .text-link{border:0;background:none;color:var(--accent2);font:inherit;font-size:12px;cursor:pointer;}
 .activity-list{display:flex;flex-direction:column;}
-.activity-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border);}
+.activity-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:11px;width:100%;padding:11px 0;border:0;border-top:1px solid var(--border);background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer;}
+.activity-item:hover{background:var(--surface2);}
+.activity-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:5px;}
 .activity-status{width:9px;height:9px;border-radius:50%;background:var(--muted);}
 .activity-status.success{background:var(--pass);}
 .activity-status.error{background:var(--fail);}
@@ -294,6 +296,12 @@ nav{
 .activity-name{color:var(--bright);font-size:13px;font-weight:650;line-height:1.35;overflow-wrap:anywhere;}
 .activity-instance{color:var(--muted);font-size:11px;margin-top:1px;}
 .activity-time{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;}
+.activity-open{color:var(--accent2);font-size:16px;line-height:1;}
+.run-detail-card{max-width:760px;}
+.run-detail-summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.run-detail-message{color:var(--bright);font-size:14px;font-weight:650;margin-bottom:5px;}
+.run-detail-time{color:var(--muted);font-family:var(--mono);font-size:10px;}
+.run-detail-empty{color:var(--muted);font-size:11px;font-style:italic;}
 .instance-section{margin-bottom:34px;}
 .instance-header-row{
   display:flex;
@@ -1280,6 +1288,17 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
   </div>
 </div>
 
+<!-- Recent activity detail -->
+<div class="overlay hidden" id="run-detail-overlay" onclick="closeRunDetails(event)">
+  <div class="overlay-card run-detail-card" role="dialog" aria-modal="true" aria-labelledby="run-detail-title" onclick="event.stopPropagation()">
+    <div class="overlay-header">
+      <span class="overlay-title" id="run-detail-title">Run details</span>
+      <button class="btn btn-secondary btn-sm" onclick="closeRunDetails()">&#10005; close</button>
+    </div>
+    <div class="overlay-body" id="run-detail-body"></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1474,17 +1493,72 @@ function renderDashboardActivity(data) {
     container.innerHTML = '<div class="empty-msg" style="padding:28px 0;">No runs recorded yet</div>';
     return;
   }
-  container.innerHTML = recent.map(run => `
-    <div class="activity-item">
+  container.innerHTML = recent.map((run, index) => `
+    <button type="button" class="activity-item" onclick="openRunDetails(${index})" aria-label="View details for ${h(run.library)} on ${h(run.instance)}">
       <span class="activity-status ${h(run.status)}"></span>
       <div style="min-width:0;">
         <div class="activity-name">${h(run.library)} · ${h(run.message || run.status)}</div>
         <div class="activity-instance">${h(run.instance)}</div>
       </div>
       <span class="activity-time">${fmtAgo(run.timestamp)}</span>
-    </div>
+      <span class="activity-open" aria-hidden="true">›</span>
+    </button>
   `).join('');
 }
+
+function runChecksHtml(run) {
+  const checks = Object.entries(run.checks || {});
+  if (!checks.length) return '<div class="run-detail-empty">No health-check details were recorded.</div>';
+  return checks.map(([name, check]) =>
+    `<div class="check-detail-row"><span class="cdot ${check.pass?'pass':'fail'}" style="margin-top:3px;flex-shrink:0;"></span><span class="cdn">${h(name)}</span><span class="cdd">${h(check.detail || '')}</span></div>`
+  ).join('');
+}
+
+function runRemovedHtml(run) {
+  if (!run.removed_items || !run.removed_items.length) {
+    return '<div class="run-detail-empty">No items removed</div>';
+  }
+  return run.removed_items.map(item =>
+    `<div class="removed-entry"><span class="re-type">${h(item.type || '')}</span><span>${h(item.title)}</span>${item.year ? `<span class="re-year">${h(item.year)}</span>` : ''}</div>`
+  ).join('');
+}
+
+function openRunDetails(index) {
+  const run = _history[index];
+  const overlay = document.getElementById('run-detail-overlay');
+  const body = document.getElementById('run-detail-body');
+  if (!run || !overlay || !body) return;
+  const count = Number(run.removed_count || 0);
+  body.innerHTML = `
+    <div class="run-detail-summary">
+      <span class="inst-chip">${h(run.instance)}</span>
+      <span class="lib-chip">${h(run.library)}</span>
+      <span class="badge ${h(run.status)}">${h(String(run.status || '').replace('_', ' '))}</span>
+    </div>
+    <div class="run-detail-message">${h(run.message || run.status)}</div>
+    <div class="run-detail-time">${fmtTime(run.timestamp)}</div>
+    <hr class="divider">
+    <div class="expand-cols">
+      <div>
+        <div class="expand-section-title">Health Checks</div>
+        ${runChecksHtml(run)}
+      </div>
+      <div>
+        <div class="expand-section-title">Removed Items (${count})</div>
+        <div class="removed-scroll">${runRemovedHtml(run)}</div>
+      </div>
+    </div>`;
+  overlay.classList.remove('hidden');
+  overlay.querySelector('button')?.focus();
+}
+
+function closeRunDetails(event) {
+  if (event && event.target !== event.currentTarget) return;
+  document.getElementById('run-detail-overlay')?.classList.add('hidden');
+}
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeRunDetails();
+});
 
 // ── History ───────────────────────────────────────────────────────────────────
 function setFilter(f, btn) {
