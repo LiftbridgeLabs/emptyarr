@@ -2,7 +2,7 @@
 
 Plex doesn't automatically clean up its library trash when you're using symlinked debrid or usenet media. When a file gets replaced or removed, Plex marks it unavailable — but unless you have "empty trash automatically after every scan" turned on (which you probably don't, because that's risky), those entries just pile up.
 
-emptyarr runs on a schedule, checks that your mounts are actually healthy, and then calls Plex's emptyTrash API. If anything looks wrong — mount missing, symlinks broken, file count dropped — it skips the empty and optionally pings you on Discord.
+emptyarr runs on a schedule, checks that your mounts are actually healthy, and then calls Plex's emptyTrash API. If anything looks wrong — mount missing, symlinks broken, file count dropped — it skips the empty and can notify you through Discord or Apprise.
 
 ---
 
@@ -158,7 +158,16 @@ For mixed libraries the file threshold check combines all paths before comparing
 
 ### Cron schedules
 
-Per-library. Standard cron syntax. `0 * * * *` runs every hour on the hour, `*/30 * * * *` every 30 minutes.
+The Settings page provides a global default plus optional per-library
+overrides. Libraries without a `cron` value inherit `schedule.default_cron`.
+`0 * * * *` runs every hour on the hour and `*/30 * * * *` runs on the next
+half-hour boundary. A daily time selected in the UI is evaluated in the
+container timezone (`TZ`).
+
+There is no automatic run immediately at startup. The first run is the next
+clock time matching the effective schedule, and the dashboard shows that
+countdown as soon as the scheduler starts. **Run now** remains available when
+an immediate safety run is wanted.
 
 ### Example config
 
@@ -180,6 +189,9 @@ clean_bundles_before_empty: false
 max_trash_items: 1000
 max_trash_percent: 25
 
+schedule:
+  default_cron: "0 * * * *"
+
 plex_instances:
   - name: My Plex
     url: http://192.168.1.100:32400
@@ -187,14 +199,13 @@ plex_instances:
     libraries:
       - name: Movies
         type: physical
-        cron: "0 * * * *"
         paths:
           - path: /mnt/user/media/movies
             type: physical
             min_threshold: 90
       - name: TV Shows
         type: physical
-        cron: "0 * * * *"
+        cron: "*/30 * * * *"  # optional per-library override
         paths:
           - path: /mnt/user/media/tv
             type: physical
@@ -236,17 +247,63 @@ API credential. Generate or rotate the token under Settings â†’ Security an
 copy it when shownâ€”emptyarr stores only its hash and cannot display it again.
 You may alternatively set `EMPTYARR_API_TOKEN` as an environment override.
 
+The API token is useful for Home Assistant, scripts, health monitors, and
+external dashboards. Send it in the `X-API-Token` header to read endpoints such
+as `/api/status`, `/api/history`, and `/api/logs`, or to trigger an authorized
+run without storing the UI password:
+
+```bash
+curl -H "X-API-Token: YOUR_TOKEN" http://EMPTYARR:8222/api/status
+```
+
+## Logs
+
+Settings → General → Logging contains the running log viewer and all rotated
+log files. Select a prior file to view it or download it. The active file is
+`emptyarr.log`; rotations use names such as `emptyarr.1.log` and
+`emptyarr.2.log`.
+
+Retention is configured in understandable storage and time units:
+
+- **Rotate each file at** controls the size of an individual file in MB.
+- **Maximum total log storage** caps all log files combined in MB.
+- **Keep rotated logs for** removes old files after the selected number of days.
+
+The oldest rotated files are removed when either the storage or age limit is
+reached. Defaults are 5 MB per file, 50 MB total, and 14 days. Logs remain under
+the persistent `LOG_DIR` (`data/logs` by default) and are also written to the
+container console for Docker/Unraid.
+
+Logs record scheduled/manual runs, safety checks, skipped operations, Plex
+actions and results, configuration changes, provider failures, and operational
+errors. Emptyarr does not intentionally log passwords, Plex tokens, provider
+keys, or API tokens.
+
 ---
 
 ## Notifications
 
-Five separate Discord notification events you can toggle independently:
+Emptyarr supports native Discord embeds plus named Apprise destinations. Friendly
+presets in Settings cover Telegram, ntfy, Gotify, email/SMTP, Pushover, and
+generic webhooks; the custom preset accepts any
+[Apprise service URL](https://appriseit.com/services/).
+
+Each Apprise destination can be enabled independently, tested before saving, and
+routed to its own selection of events. The global event controls are master
+switches for both Discord and Apprise:
 
 - **Trash emptied** — something was actually removed
 - **Health check failed** — checks didn't pass, empty was skipped
 - **Error** — the emptyTrash API call failed
 - **Already clean** — ran fine, nothing to remove (off by default — gets noisy)
 - **Skipped** — scheduling paused, config error, section not found (off by default)
+
+Notification delivery runs outside the library operation so a slow or unavailable
+notification provider cannot block trash-protection work. Destination URLs often
+contain credentials and are stored in `config.yml`; keep the file private.
+
+Quiet hours, failure/recovery notifications, daily summaries, and digest routing
+are planned after the first destination release is proven stable.
 
 ---
 
@@ -270,8 +327,9 @@ docker compose up -d emptyarr
 ## Privacy
 
 emptyarr talks to your Plex server, Plex's authorization/discovery service when
-you choose account linking, configured debrid provider APIs, and your Discord
-webhook. It sends no telemetry or analytics. See [PRIVACY.md](PRIVACY.md).
+you choose account linking, configured debrid provider APIs, and notification
+services you configure. It sends no telemetry or analytics. See
+[PRIVACY.md](PRIVACY.md).
 
 ---
 

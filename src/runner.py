@@ -270,10 +270,10 @@ def _handle_checks_failed(config, instance, library, all_checks, failed):
     msg = f"Checks failed ({failed_names}) — trash empty skipped"
     logger.warning(f"[{instance.name} / {library.name}] {msg}")
     _record(instance.name, library.name, "skipped", all_checks, msg)
-    if config.notify.on_health_fail and config.discord_webhook:
-        notifications.notify_health_fail(config.discord_webhook,
-                                         instance.name, library.name,
-                                         failed, all_checks)
+    if config.notify.on_health_fail:
+        notifications.dispatch_health_fail(
+            config, instance.name, library.name, failed, all_checks,
+        )
 
 
 def _handle_dry_run(instance, library, trash_items, all_checks, headline_count):
@@ -292,11 +292,11 @@ def _handle_empty_failed(config, instance, library, result, all_checks):
     logger.error(f"[{instance.name} / {library.name}] {msg}")
     _record(instance.name, library.name, "error", all_checks, msg,
             removed_items=[], removed_count=0)
-    if config.notify.on_error and config.discord_webhook:
-        notifications.notify_error(config.discord_webhook,
-                                   instance.name, library.name,
-                                   str(result.get('error', result.get('http'))),
-                                   all_checks)
+    if config.notify.on_error:
+        notifications.dispatch_error(
+            config, instance.name, library.name,
+            str(result.get('error', result.get('http'))), all_checks,
+        )
 
 
 def _handle_empty_success(config, instance, library, trash_items, all_checks,
@@ -315,14 +315,15 @@ def _handle_empty_success(config, instance, library, trash_items, all_checks,
     _record(instance.name, library.name, "success", all_checks, msg,
             removed_items if removed_items else [],
             removed_count=_headline_count(removed_items))
-    if removed_count > 0 and config.notify.on_emptied and config.discord_webhook:
-        notifications.notify_emptied(config.discord_webhook,
-                                     instance.name, library.name,
-                                     removed_items, all_checks,
-                                     breakdown=_breakdown(removed_items))
-    elif trash_count == 0 and config.notify.on_clean and config.discord_webhook:
-        notifications.notify_clean(config.discord_webhook,
-                                   instance.name, library.name, all_checks)
+    if removed_count > 0 and config.notify.on_emptied:
+        notifications.dispatch_emptied(
+            config, instance.name, library.name, removed_items, all_checks,
+            breakdown=_breakdown(removed_items),
+        )
+    elif trash_count == 0 and config.notify.on_clean:
+        notifications.dispatch_clean(
+            config, instance.name, library.name, all_checks,
+        )
 
 
 def _scheduling_blocked(dry_run: bool, manual: bool) -> bool:
@@ -333,8 +334,10 @@ def _handle_section_not_found(config, instance, library):
     msg = f"Could not find Plex section for '{library.name}'"
     logger.warning(f"[{instance.name} / {library.name}] {msg}")
     _record(instance.name, library.name, "error", {}, msg)
-    if config.notify.on_skip and config.discord_webhook:
-        notifications.notify_skip(config.discord_webhook, instance.name, library.name, msg)
+    if config.notify.on_skip:
+        notifications.dispatch_skip(
+            config, instance.name, library.name, msg,
+        )
 
 
 def _collect_library_checks(instance: PlexInstanceConfig,
@@ -364,9 +367,9 @@ def _failed_checks(checks: Dict) -> Dict:
 def _record_inventory_error(config, instance, library, checks, message):
     logger.error(f"[{instance.name} / {library.name}] {message}")
     _record(instance.name, library.name, "error", checks, message)
-    if config.notify.on_error and config.discord_webhook:
-        notifications.notify_error(
-            config.discord_webhook, instance.name, library.name, message, checks,
+    if config.notify.on_error:
+        notifications.dispatch_error(
+            config, instance.name, library.name, message, checks,
         )
 
 

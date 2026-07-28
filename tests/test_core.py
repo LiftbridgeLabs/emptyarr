@@ -1,4 +1,6 @@
+import logging
 import os
+import shutil
 import threading
 import time
 import unittest
@@ -21,6 +23,79 @@ from src.plex_client import PlexClient
 from src import runner
 from src import plex_auth
 from src.auth import hash_api_token
+from src.logging_manager import LogManager
+
+
+class LoggingTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = _TEST_ROOT / ".runtime-log-manager"
+        if self.directory.exists():
+            shutil.rmtree(self.directory)
+        self.manager = LogManager(
+            str(self.directory),
+            logging.Formatter("%(levelname)s %(message)s"),
+            max_file_size_mb=1,
+            max_total_size_mb=3,
+            retention_days=14,
+        )
+        self.logger = logging.getLogger(f"emptyarr-test-{id(self)}")
+        self.logger.handlers = [self.manager.handler]
+        self.logger.propagate = False
+        self.logger.setLevel(logging.INFO)
+
+    def tearDown(self):
+        self.logger.handlers = []
+        self.manager.handler.close()
+        if self.directory.exists():
+            shutil.rmtree(self.directory)
+
+    def test_rotation_uses_readable_log_filenames(self):
+        payload = "x" * (600 * 1024)
+        self.logger.info(payload)
+        self.logger.info(payload)
+        names = {item["name"] for item in self.manager.list_files()}
+        self.assertIn("emptyarr.log", names)
+        self.assertIn("emptyarr.1.log", names)
+
+    def test_retention_removes_expired_rotated_logs(self):
+        expired = self.directory / "emptyarr.9.log"
+        expired.write_text("old", encoding="utf-8")
+        old = time.time() - (2 * 86400)
+        os.utime(expired, (old, old))
+        self.manager.configure(1, 3, 1)
+        self.assertFalse(expired.exists())
+
+    def test_total_storage_removes_oldest_rotated_logs(self):
+        first = self.directory / "emptyarr.8.log"
+        second = self.directory / "emptyarr.9.log"
+        first.write_bytes(b"a" * (700 * 1024))
+        second.write_bytes(b"b" * (700 * 1024))
+        os.utime(first, (time.time() - 20, time.time() - 20))
+        os.utime(second, (time.time() - 10, time.time() - 10))
+        self.manager.configure(1, 1, 14)
+        total = sum(item["size_bytes"] for item in self.manager.list_files())
+        self.assertLessEqual(total, 1024 * 1024)
+        self.assertFalse(first.exists())
+
+    def test_log_api_lists_reads_and_rejects_unknown_files(self):
+        app.logger.info("log-api-test-marker")
+        app.log_manager.handler.flush()
+        client = app.app.test_client()
+        listing = client.get("/api/logs")
+        self.assertEqual(listing.status_code, 200)
+        names = [item["name"] for item in listing.get_json()["files"]]
+        self.assertIn("emptyarr.log", names)
+        content = client.get("/api/logs/emptyarr.log")
+        self.assertEqual(content.status_code, 200)
+        self.assertIn("log-api-test-marker", content.get_json()["content"])
+        download = client.get("/api/logs/emptyarr.log/download")
+        self.assertEqual(download.status_code, 200)
+        self.assertIn("attachment", download.headers["Content-Disposition"])
+        download.close()
+        self.assertEqual(
+            client.get("/api/logs/not-a-log.txt").status_code,
+            404,
+        )
 
 
 class WebSecurityTests(unittest.TestCase):
@@ -561,6 +636,84 @@ class SafetyTests(unittest.TestCase):
 
 
 class LiveConfigTests(unittest.TestCase):
+    def test_invalid_log_storage_policy_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Total log storage"):
+            app._validate_raw_config({
+                "logging": {
+                    "max_file_size_mb": 50,
+                    "max_total_size_mb": 10,
+                    "retention_days": 14,
+                },
+                "plex_instances": [],
+            })
+
+    def test_invalid_global_cron_is_rejected_before_apply(self):
+        with self.assertRaises(ValueError):
+            app._validate_raw_config({
+                "schedule": {"default_cron": "not a cron"},
+                "plex_instances": [],
+            })
+
+    def test_global_schedule_is_inherited_without_library_override(self):
+        raw = {
+            "schedule": {"default_cron": "*/30 * * * *"},
+            "plex_instances": [{
+                "name": "Plex",
+                "url": "http://plex:32400",
+                "libraries": [{
+                    "name": "Movies",
+                    "paths": [{"path": "/media", "type": "physical"}],
+                }],
+            }],
+        }
+        parsed = app._validate_raw_config(raw)
+        library = parsed.instances[0].libraries[0]
+        self.assertEqual(library.cron, "")
+        self.assertEqual(app._effective_cron(parsed, library), "*/30 * * * *")
+
+    def test_library_schedule_override_wins_over_global_default(self):
+        raw = {
+            "schedule": {"default_cron": "0 * * * *"},
+            "plex_instances": [{
+                "name": "Plex",
+                "url": "http://plex:32400",
+                "libraries": [{
+                    "name": "Movies",
+                    "cron": "0 */6 * * *",
+                    "paths": [{"path": "/media", "type": "physical"}],
+                }],
+            }],
+        }
+        parsed = app._validate_raw_config(raw)
+        library = parsed.instances[0].libraries[0]
+        self.assertEqual(app._effective_cron(parsed, library), "0 */6 * * *")
+
+    def test_next_run_is_available_before_first_library_run(self):
+        old_config = app.config
+        raw = {
+            "schedule": {"default_cron": "*/30 * * * *"},
+            "plex_instances": [{
+                "name": "Schedule Test",
+                "url": "http://plex:32400",
+                "libraries": [{
+                    "name": "Movies",
+                    "paths": [{"path": "/media", "type": "physical"}],
+                }],
+            }],
+        }
+        try:
+            parsed = app._validate_raw_config(raw)
+            app._apply_runtime_config(parsed)
+            instances = app._build_ui_instances()
+            self.assertNotEqual(instances[0]["libraries"][0]["next_run"], "—")
+            self.assertTrue(instances[0]["libraries"][0]["uses_global_schedule"])
+            self.assertEqual(
+                instances[0]["libraries"][0]["effective_cron"],
+                "*/30 * * * *",
+            )
+        finally:
+            app._apply_runtime_config(old_config)
+
     def test_invalid_cron_is_rejected_before_apply(self):
         raw = {
             "plex_instances": [{

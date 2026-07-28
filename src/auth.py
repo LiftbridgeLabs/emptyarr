@@ -26,7 +26,7 @@ def hash_api_token(token: str) -> str:
 
 
 def _legacy_hash(password: str) -> str:
-    """SHA-256 hash used for env-var auth path (deterministic — needed for stable X-API-Token)."""
+    """Legacy deterministic SHA-256 hash used for environment login auth."""
     return hashlib.sha256(f"emptyarr:{password}".encode()).hexdigest()
 
 
@@ -47,7 +47,7 @@ def _get_credentials(config=None):
     env_user = os.environ.get("EMPTYARR_USERNAME", "")
     env_pass = os.environ.get("EMPTYARR_PASSWORD", "")
     if env_user and env_pass:
-        # Keep SHA-256 for env-var path — deterministic hash keeps X-API-Token stable
+        # Keep SHA-256 for compatibility with the environment login path.
         return env_user, _legacy_hash(env_pass)
     if config and getattr(config, "auth_username", "") and getattr(config, "auth_password_hash", ""):
         return config.auth_username, config.auth_password_hash

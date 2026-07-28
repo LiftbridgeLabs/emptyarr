@@ -32,7 +32,7 @@ class LibraryConfig:
     name: str
     type: str                                    # physical | debrid | usenet | mixed
     paths: List[PathConfig]
-    cron: str = "0 * * * *"
+    cron: str = ""                                  # blank inherits AppConfig.default_cron
     section_id: Optional[str] = None            # auto-discovered if not set
 
 
@@ -58,6 +58,24 @@ class NotifyConfig:
     on_skip:          bool = False  # scheduling paused, config error, section not found
 
 
+NOTIFICATION_EVENTS = (
+    "emptied",
+    "clean",
+    "health_fail",
+    "error",
+    "skip",
+)
+
+
+@dataclass
+class NotificationDestination:
+    name: str
+    url: str
+    service: str = "custom"
+    enabled: bool = True
+    events: List[str] = field(default_factory=lambda: list(NOTIFICATION_EVENTS))
+
+
 # ── Top-level app config ──────────────────────────────────────────────────────
 
 @dataclass
@@ -65,6 +83,7 @@ class AppConfig:
     instances: List[PlexInstanceConfig]
     discord_webhook: str = ""
     notify: NotifyConfig = field(default_factory=NotifyConfig)
+    notification_destinations: List[NotificationDestination] = field(default_factory=list)
     log_level: str = "INFO"
     config_missing: bool = False    # True when no config.yml — UI shows setup prompt
     auth_username: str = ""
@@ -74,6 +93,10 @@ class AppConfig:
     clean_bundles_before_empty: bool = False
     max_trash_items: int = 1000
     max_trash_percent: float = 25.0
+    default_cron: str = "0 * * * *"
+    log_max_file_size_mb: int = 5
+    log_max_total_size_mb: int = 50
+    log_retention_days: int = 14
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -120,7 +143,7 @@ def _load_path(raw: dict, lib_type: str,
 def _load_library(raw: dict) -> LibraryConfig:
     lib_type          = raw.get("type", "physical")
     lib_min_threshold = float(raw.get("min_threshold", 90)) / 100.0
-    cron              = raw.get("cron", "0 * * * *")
+    cron              = raw.get("cron", "")
     raw_paths         = raw.get("paths", [])
 
     parsed_paths = []
@@ -173,6 +196,23 @@ def _load_instance(raw: dict) -> PlexInstanceConfig:
     )
 
 
+def _load_notification_destination(raw: dict) -> NotificationDestination:
+    configured_events = raw.get("events", NOTIFICATION_EVENTS)
+    if not isinstance(configured_events, list):
+        configured_events = list(NOTIFICATION_EVENTS)
+    events = [
+        event for event in configured_events
+        if event in NOTIFICATION_EVENTS
+    ]
+    return NotificationDestination(
+        name=str(raw.get("name", "")).strip(),
+        service=str(raw.get("service", "custom")).strip().lower(),
+        url=str(raw.get("url", "")).strip(),
+        enabled=bool(raw.get("enabled", True)),
+        events=events,
+    )
+
+
 # ── Public loader ─────────────────────────────────────────────────────────────
 
 def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
@@ -198,6 +238,17 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
         on_error       = notify_raw.get("on_error",       True),
         on_skip        = notify_raw.get("on_skip",        False),
     )
+    notifications_raw = raw.get("notifications", {})
+    if not isinstance(notifications_raw, dict):
+        notifications_raw = {}
+    destinations_raw = notifications_raw.get("destinations", [])
+    if not isinstance(destinations_raw, list):
+        destinations_raw = []
+    notification_destinations = [
+        _load_notification_destination(destination)
+        for destination in destinations_raw
+        if isinstance(destination, dict)
+    ]
 
     auth_raw = raw.get("auth", {})
     auth_username      = auth_raw.get("username", "")
@@ -208,6 +259,16 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
     clean_bundles_before_empty = bool(raw.get("clean_bundles_before_empty", False))
     max_trash_items = int(raw.get("max_trash_items", 1000))
     max_trash_percent = float(raw.get("max_trash_percent", 25))
+    schedule_raw = raw.get("schedule", {})
+    if not isinstance(schedule_raw, dict):
+        schedule_raw = {}
+    default_cron = schedule_raw.get("default_cron", "0 * * * *")
+    logging_raw = raw.get("logging", {})
+    if not isinstance(logging_raw, dict):
+        logging_raw = {}
+    log_max_file_size_mb = int(logging_raw.get("max_file_size_mb", 5))
+    log_max_total_size_mb = int(logging_raw.get("max_total_size_mb", 50))
+    log_retention_days = int(logging_raw.get("retention_days", 14))
 
     instances = [_load_instance(inst) for inst in raw.get("plex_instances", [])]
 
@@ -218,6 +279,7 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
         instances           = instances,
         discord_webhook     = discord,
         notify              = notify,
+        notification_destinations = notification_destinations,
         log_level           = log_level,
         config_missing      = False,
         auth_username       = auth_username,
@@ -227,6 +289,10 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
         clean_bundles_before_empty = clean_bundles_before_empty,
         max_trash_items      = max_trash_items,
         max_trash_percent    = max_trash_percent,
+        default_cron         = default_cron,
+        log_max_file_size_mb = log_max_file_size_mb,
+        log_max_total_size_mb = log_max_total_size_mb,
+        log_retention_days   = log_retention_days,
     )
 
 

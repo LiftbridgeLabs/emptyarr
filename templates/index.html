@@ -712,6 +712,7 @@ dialog.overlay::backdrop{background:transparent;}
   .expand-cols{grid-template-columns:1fr;}
   .settings-layout{grid-template-columns:1fr;}
   .settings-nav{flex-direction:row;flex-wrap:wrap;}
+  .log-view-layout{grid-template-columns:1fr!important;}
   .app-footer{align-items:flex-start;flex-direction:column;}
   .footer-links{flex-wrap:wrap;}
 }
@@ -886,7 +887,10 @@ dialog.overlay::backdrop{background:transparent;}
           </div>
         </div>
         <div class="lib-card-footer">
-          <span style="font-size:11px;color:var(--muted);font-family:var(--mono);">{{ lib.cron }}</span>
+          <span style="font-size:11px;color:var(--muted);font-family:var(--mono);"
+                title="{{ 'Uses global schedule' if lib.uses_global_schedule else 'Per-library override' }}">
+            {{ 'global · ' if lib.uses_global_schedule else '' }}{{ lib.effective_cron }}
+          </span>
           <div class="lib-card-actions">
             <button class="btn btn-secondary btn-sm" title="Dry run"
                     onclick='dryRunLib({{ inst.name | tojson }},{{ lib.name | tojson }})'
@@ -963,6 +967,38 @@ dialog.overlay::backdrop{background:transparent;}
       <div class="settings-section active" id="ss-plex">
         <div class="settings-section-title">Plex Instances</div>
         <div class="settings-section-desc">Manage Plex instances and libraries. Saved changes are applied immediately.</div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <span class="card-title">Global schedule</span>
+            <span class="badge success">Inherited by default</span>
+          </div>
+          <div class="card-body">
+            <div class="form-row" style="align-items:end;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="s-global-schedule">Run frequency</label>
+                <select class="form-input" id="s-global-schedule" onchange="globalScheduleChanged()">
+                  <option value="*/30 * * * *">Every 30 minutes</option>
+                  <option value="0 * * * *">Every hour</option>
+                  <option value="0 */2 * * *">Every 2 hours</option>
+                  <option value="0 */6 * * *">Every 6 hours</option>
+                  <option value="daily">Daily at a specific time</option>
+                  <option value="custom">Custom cron from config.yml</option>
+                </select>
+              </div>
+              <div class="form-group" id="s-global-time-group" style="margin-bottom:0;display:none;">
+                <label class="form-label" for="s-global-run-at">Run daily at</label>
+                <input class="form-input" type="time" id="s-global-run-at" value="02:00" onchange="globalRunAtChanged()" />
+              </div>
+            </div>
+            <div class="form-hint" id="s-global-schedule-summary" style="margin-top:10px;"></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:12px;">
+              <button class="btn btn-secondary btn-sm" type="button" onclick="applyGlobalScheduleToAll()">
+                Use global schedule for every library
+              </button>
+              <span class="form-hint" style="margin:0;">Clears per-library overrides when configuration is saved.</span>
+            </div>
+          </div>
+        </div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
           <button class="btn btn-primary" onclick="connectPlexAccount('settings')">Connect Plex Account</button>
           <span style="font-size:11px;color:var(--muted);">Discover servers and libraries through Plex sign-in</span>
@@ -1056,13 +1092,29 @@ dialog.overlay::backdrop{background:transparent;}
       <!-- Notifications -->
       <div class="settings-section" id="ss-notifications">
         <div class="settings-section-title">Notifications</div>
-        <div class="settings-section-desc">Configure Discord webhook notifications.</div>
-        <div class="form-group">
+        <div class="settings-section-desc">Send emptyarr events to native Discord embeds and Apprise-powered services.</div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header"><span class="card-title">Discord</span><span class="badge">native</span></div>
+          <div class="card-body">
+        <div class="form-group" style="margin-bottom:0;">
           <label class="form-label" for="s-discord">Discord Webhook URL</label>
-          <input class="form-input" id="s-discord" placeholder="https://discord.com/api/webhooks/…" />
+          <input class="form-input" type="password" id="s-discord" autocomplete="off" placeholder="https://discord.com/api/webhooks/…" />
+        </div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <div>
+              <span class="card-title">Apprise Destinations</span>
+              <div class="form-hint">Telegram, ntfy, Gotify, email, Pushover, webhooks, and any other Apprise URL.</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="addNotificationDestination()">+ Add destination</button>
+          </div>
+          <div class="card-body" id="notification-destinations"></div>
         </div>
         <div class="form-group">
-          <div class="form-label" style="margin-bottom:10px;">Notify when:</div>
+          <div class="form-label" style="margin-bottom:10px;">Global event controls</div>
+          <div class="form-hint" style="margin-bottom:12px;">Master switches for Discord and every Apprise destination. Each destination can route a smaller selection.</div>
           <div style="display:flex;flex-direction:column;gap:10px;">
             <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
               <input type="checkbox" id="s-notify-emptied" style="accent-color:var(--accent);width:15px;height:15px;" />
@@ -1099,6 +1151,12 @@ dialog.overlay::backdrop{background:transparent;}
                 <div style="font-size:11px;color:var(--muted);">Scheduling paused, config error, or section not found</div>
               </div>
             </label>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-body">
+            <div style="font-size:13px;color:var(--bright);font-weight:600;">Planned notification controls</div>
+            <div class="form-hint" style="margin-top:6px;">Quiet hours, failure/recovery pairs, daily summaries, and instant-versus-digest routing will follow after destination delivery is proven stable.</div>
           </div>
         </div>
         <hr class="divider"/>
@@ -1151,6 +1209,10 @@ dialog.overlay::backdrop{background:transparent;}
             <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7;">
               Use this token to authenticate API calls from scripts or automations without a browser session.
               Add it as an HTTP header: <code style="color:var(--accent2);">X-API-Token: &lt;token&gt;</code>
+              Typical uses include Home Assistant buttons, scheduled scripts, uptime checks,
+              external dashboards, and safely triggering a run or reading status/history/logs
+              without storing the UI password. Rotate or revoke it independently if an
+              automation is retired.
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" for="api-token-display">New API token</label>
@@ -1228,18 +1290,79 @@ dialog.overlay::backdrop{background:transparent;}
         <div class="card">
           <div class="card-header"><span class="card-title">Logging</span></div>
           <div class="card-body">
-            <div class="form-group" style="max-width:360px;">
-              <label class="form-label" for="s-log-level">Log level</label>
-              <select class="form-input" id="s-log-level">
-                <option value="DEBUG">Debug</option>
-                <option value="INFO">Info</option>
-                <option value="WARNING">Warning</option>
-                <option value="ERROR">Error</option>
-              </select>
-              <div class="form-hint">Applied immediately and saved to config.yml.</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="s-log-level">Log level</label>
+                <select class="form-input" id="s-log-level">
+                  <option value="DEBUG">Debug</option>
+                  <option value="INFO">Info</option>
+                  <option value="WARNING">Warning</option>
+                  <option value="ERROR">Error</option>
+                </select>
+                <div class="form-hint">Debug is more detailed; Info is recommended for normal use.</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="s-log-file-size">Rotate each file at</label>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input class="form-input" type="number" id="s-log-file-size" min="1" max="1024" step="1" />
+                  <span style="color:var(--muted);font-size:12px;">MB</span>
+                </div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="s-log-total-size">Maximum total log storage</label>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input class="form-input" type="number" id="s-log-total-size" min="1" max="10240" step="1" />
+                  <span style="color:var(--muted);font-size:12px;">MB</span>
+                </div>
+                <div class="form-hint">Oldest rotated files are removed first when this limit is reached.</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="s-log-retention-days">Keep rotated logs for</label>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input class="form-input" type="number" id="s-log-retention-days" min="1" max="3650" step="1" />
+                  <span style="color:var(--muted);font-size:12px;">days</span>
+                </div>
+                <div class="form-hint">Files are removed when either the age or storage limit is reached.</div>
+              </div>
+            </div>
+            <div class="form-hint" style="margin-bottom:14px;">
+              Logs include scheduled and manual runs, safety-check results, skipped operations,
+              Plex actions, configuration changes, and integration errors. Credentials and API
+              tokens are not intentionally logged.
             </div>
             <button class="btn btn-primary" onclick="settingsSave()">Save General Settings</button>
             <span id="settings-save-result-general" style="margin-left:12px;font-size:12px;"></span>
+
+            <hr class="divider"/>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
+              <div>
+                <div class="card-title">Log files</div>
+                <div class="form-hint" id="log-storage-summary">Loading log storage…</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);cursor:pointer;">
+                  <input type="checkbox" id="log-auto-scroll" checked />
+                  Follow active log
+                </label>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="loadLogFiles()">Refresh</button>
+                <a class="btn btn-secondary btn-sm" id="log-download" href="#" download>Download</a>
+              </div>
+            </div>
+            <div class="log-view-layout" style="display:grid;grid-template-columns:minmax(190px,240px) minmax(0,1fr);gap:10px;">
+              <div id="log-file-list"
+                   style="border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:6px;max-height:430px;overflow:auto;">
+                <div class="empty-msg" style="padding:20px 8px;">Loading…</div>
+              </div>
+              <div style="min-width:0;">
+                <div id="log-view-status" class="form-hint" style="margin:0 0 6px;"></div>
+                <pre id="log-viewer"
+                     tabindex="0"
+                     aria-label="emptyarr log output"
+                     style="height:400px;margin:0;overflow:auto;white-space:pre;background:#0a0f16;color:#d7e2ef;border:1px solid var(--border2);border-radius:8px;padding:12px;font:11px/1.55 var(--mono);"></pre>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1359,6 +1482,7 @@ function showPage(name, btn) {
   if (btn) btn.classList.add('active');
   if (name === 'history') { fetchHistory(); }
   if (name === 'settings') { loadSettings(); }
+  if (name !== 'settings') { stopLogViewer(); }
 }
 
 function showSettingsSection(name, btn) {
@@ -1368,6 +1492,8 @@ function showSettingsSection(name, btn) {
   if (btn) btn.classList.add('active');
   if (name === 'providers') loadProviderStatus();
   if (name === 'security')  loadApiToken();
+  if (name === 'general') startLogViewer();
+  else stopLogViewer();
 }
 
 // ── Utils ────────────────────────────────────────────────────────────────────
@@ -1647,8 +1773,114 @@ function toggleExpand(rid, row) {
   else { _expanded.add(rid); er.classList.add('open'); row.classList.add('expanded'); }
 }
 
+// ── Log viewer ────────────────────────────────────────────────────────────────
+let _logPollTimer = null;
+let _selectedLog = '';
+let _activeLog = '';
+let _logLoading = false;
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function startLogViewer() {
+  if (_logPollTimer) return;
+  loadLogFiles(true);
+  _logPollTimer = setInterval(async () => {
+    await loadLogFiles(false);
+    if (_selectedLog && _selectedLog === _activeLog) refreshLogView();
+  }, 3000);
+}
+
+function stopLogViewer() {
+  if (_logPollTimer) clearInterval(_logPollTimer);
+  _logPollTimer = null;
+}
+
+async function loadLogFiles(preferActive = false) {
+  if (_logLoading) return;
+  _logLoading = true;
+  try {
+    const response = await fetch('/api/logs');
+    const data = await response.json();
+    const files = data.files || [];
+    _activeLog = files.find(file => file.active)?.name || '';
+    if (preferActive || !files.some(file => file.name === _selectedLog)) {
+      _selectedLog = _activeLog || files[0]?.name || '';
+    }
+
+    const total = files.reduce((sum, file) => sum + Number(file.size_bytes || 0), 0);
+    const summary = document.getElementById('log-storage-summary');
+    if (summary) {
+      summary.textContent = `${formatBytes(total)} used of ${data.policy?.max_total_size_mb ?? '—'} MB · ${data.policy?.retention_days ?? '—'} day retention · ${data.directory || 'data/logs'}`;
+    }
+
+    const list = document.getElementById('log-file-list');
+    if (list) {
+      list.innerHTML = files.length ? files.map(file => `
+        <button type="button" class="log-file-button"
+                data-log-name="${h(file.name)}"
+                style="display:block;width:100%;text-align:left;border:1px solid ${file.name === _selectedLog ? 'var(--accent)' : 'transparent'};background:${file.name === _selectedLog ? 'var(--surface2)' : 'transparent'};color:var(--text);border-radius:6px;padding:8px;margin-bottom:4px;cursor:pointer;">
+          <span style="display:flex;justify-content:space-between;gap:8px;">
+            <strong style="font-family:var(--mono);font-size:11px;">${h(file.name)}</strong>
+            ${file.active ? '<span class="badge success">live</span>' : ''}
+          </span>
+          <span style="display:block;color:var(--muted);font-size:10px;margin-top:3px;">${formatBytes(file.size_bytes)} · ${fmtTime(file.modified)}</span>
+        </button>
+      `).join('') : '<div class="empty-msg" style="padding:20px 8px;">No log files found</div>';
+      list.querySelectorAll('[data-log-name]').forEach(button => {
+        button.addEventListener('click', () => selectLogFile(button.dataset.logName));
+      });
+    }
+
+    const download = document.getElementById('log-download');
+    if (download) {
+      download.href = _selectedLog
+        ? `/api/logs/${encodeURIComponent(_selectedLog)}/download`
+        : '#';
+      download.style.pointerEvents = _selectedLog ? '' : 'none';
+      download.style.opacity = _selectedLog ? '' : '.5';
+    }
+    if (preferActive) await refreshLogView();
+  } catch (error) {
+    const status = document.getElementById('log-view-status');
+    if (status) status.textContent = 'Could not load log files.';
+  } finally {
+    _logLoading = false;
+  }
+}
+
+async function selectLogFile(name) {
+  _selectedLog = name;
+  await loadLogFiles(false);
+  await refreshLogView();
+}
+
+async function refreshLogView() {
+  const viewer = document.getElementById('log-viewer');
+  const status = document.getElementById('log-view-status');
+  if (!viewer || !_selectedLog) return;
+  try {
+    const response = await fetch(`/api/logs/${encodeURIComponent(_selectedLog)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Log unavailable');
+    const follow = document.getElementById('log-auto-scroll')?.checked && data.active;
+    const wasNearBottom = viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight < 40;
+    viewer.textContent = data.content || '';
+    if (status) {
+      status.textContent = `${data.name} · ${formatBytes(data.size_bytes)}${data.truncated ? ' · showing the most recent portion' : ''}`;
+    }
+    if (follow || wasNearBottom) viewer.scrollTop = viewer.scrollHeight;
+  } catch (error) {
+    if (status) status.textContent = error.message || 'Could not read log.';
+  }
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
-let _settingsData = { instances: [], discord_webhook: '', log_level: 'INFO', max_trash_items: 1000, max_trash_percent: 25, notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
+let _settingsData = { instances: [], default_cron: '0 * * * *', discord_webhook: '', notification_destinations: [], log_level: 'INFO', log_max_file_size_mb: 5, log_max_total_size_mb: 50, log_retention_days: 14, max_trash_items: 1000, max_trash_percent: 25, notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
 
 async function loadSettings() {
   try {
@@ -1657,7 +1889,18 @@ async function loadSettings() {
     if (!d.ok) { toast('Could not load config', 'fail'); return; }
     const cfg = d.config || {};
     _settingsData.discord_webhook    = cfg.discord_webhook || '';
+    _settingsData.notification_destinations = (cfg.notifications?.destinations || []).map(destination => ({
+      name: destination.name || '',
+      service: destination.service || 'custom',
+      url: destination.url || '',
+      enabled: destination.enabled !== false,
+      events: Array.isArray(destination.events) ? destination.events : ['emptied','clean','health_fail','error','skip'],
+    }));
     _settingsData.log_level          = cfg.log_level || 'INFO';
+    _settingsData.log_max_file_size_mb = cfg.logging?.max_file_size_mb ?? 5;
+    _settingsData.log_max_total_size_mb = cfg.logging?.max_total_size_mb ?? 50;
+    _settingsData.log_retention_days = cfg.logging?.retention_days ?? 14;
+    _settingsData.default_cron       = cfg.schedule?.default_cron || '0 * * * *';
     _settingsData.max_trash_items    = cfg.max_trash_items ?? 1000;
     _settingsData.max_trash_percent  = cfg.max_trash_percent ?? 25;
     _settingsData.notify_emptied     = cfg.notify?.on_emptied     ?? cfg.notify?.on_success ?? true;
@@ -1673,7 +1916,7 @@ async function loadSettings() {
       libraries: (inst.libraries || []).map(lib => ({
         name:  lib.name  || '',
         type:  lib.type  || 'physical',
-        cron:  lib.cron  || '0 * * * *',
+        cron:  lib.cron  || '',
         section_id: lib.section_id ?? null,
         paths: (lib.paths || []).map(p => ({
           path:            p.path          || '',
@@ -1684,10 +1927,14 @@ async function loadSettings() {
       }))
     }));
     renderSettingsInstances();
+    loadGlobalScheduleControls();
     // Populate notification fields
     document.getElementById('s-discord').value = _settingsData.discord_webhook;
     const logLevel = document.getElementById('s-log-level');
     if (logLevel) logLevel.value = _settingsData.log_level;
+    document.getElementById('s-log-file-size').value = _settingsData.log_max_file_size_mb;
+    document.getElementById('s-log-total-size').value = _settingsData.log_max_total_size_mb;
+    document.getElementById('s-log-retention-days').value = _settingsData.log_retention_days;
     document.getElementById('s-max-trash-items').value = _settingsData.max_trash_items;
     document.getElementById('s-max-trash-percent').value = _settingsData.max_trash_percent;
     document.getElementById('s-notify-emptied').checked     = cfg.notify?.on_emptied     ?? cfg.notify?.on_success ?? true;
@@ -1695,6 +1942,7 @@ async function loadSettings() {
     document.getElementById('s-notify-error').checked       = cfg.notify?.on_error        ?? true;
     document.getElementById('s-notify-clean').checked       = cfg.notify?.on_clean        ?? false;
     document.getElementById('s-notify-skip').checked        = cfg.notify?.on_skip         ?? false;
+    renderNotificationDestinations();
     // Pre-populate username if set
     const authUser = document.getElementById('s-auth-user');
     if (authUser && cfg.auth && cfg.auth.username) authUser.value = cfg.auth.username;
@@ -1753,6 +2001,86 @@ function renderSettingsInstances() {
   `).join('');
 }
 
+function cronDescription(cron) {
+  const known = {
+    '*/30 * * * *': 'Every 30 minutes',
+    '0 * * * *': 'Every hour',
+    '0 */2 * * *': 'Every 2 hours',
+    '0 */6 * * *': 'Every 6 hours',
+  };
+  if (known[cron]) return known[cron];
+  const daily = /^(\d{1,2}) (\d{1,2}) \* \* \*$/.exec(cron || '');
+  if (daily) {
+    const time = `${String(daily[2]).padStart(2,'0')}:${String(daily[1]).padStart(2,'0')}`;
+    return `Daily at ${time}`;
+  }
+  return cron || 'Every hour';
+}
+
+function loadGlobalScheduleControls() {
+  const select = document.getElementById('s-global-schedule');
+  const time = document.getElementById('s-global-run-at');
+  if (!select || !time) return;
+  const cron = _settingsData.default_cron || '0 * * * *';
+  const known = [...select.options].some(option => option.value === cron && option.value !== 'custom');
+  const daily = /^(\d{1,2}) (\d{1,2}) \* \* \*$/.exec(cron);
+  if (known) {
+    select.value = cron;
+  } else if (daily) {
+    select.value = 'daily';
+    time.value = `${String(daily[2]).padStart(2,'0')}:${String(daily[1]).padStart(2,'0')}`;
+  } else {
+    select.value = 'custom';
+  }
+  updateGlobalScheduleControls();
+}
+
+function updateGlobalScheduleControls() {
+  const select = document.getElementById('s-global-schedule');
+  const group = document.getElementById('s-global-time-group');
+  const summary = document.getElementById('s-global-schedule-summary');
+  if (!select || !group || !summary) return;
+  group.style.display = select.value === 'daily' ? '' : 'none';
+  const timezone = {{ scheduler_timezone | tojson }};
+  const overrideCount = _settingsData.instances.reduce(
+    (count, instance) => count + instance.libraries.filter(library => Boolean(library.cron)).length,
+    0
+  );
+  const overrides = overrideCount
+    ? ` ${overrideCount} ${overrideCount === 1 ? 'library currently has' : 'libraries currently have'} a per-library override.`
+    : ' Every library currently inherits this schedule.';
+  summary.textContent = `${cronDescription(_settingsData.default_cron)} in the container timezone (${timezone}). The first automatic run is the next matching clock time after emptyarr starts.${overrides}`;
+}
+
+function globalScheduleChanged() {
+  const select = document.getElementById('s-global-schedule');
+  if (!select || select.value === 'custom') {
+    updateGlobalScheduleControls();
+    return;
+  }
+  if (select.value === 'daily') globalRunAtChanged();
+  else _settingsData.default_cron = select.value;
+  updateGlobalScheduleControls();
+  renderSettingsInstances();
+}
+
+function globalRunAtChanged() {
+  const value = document.getElementById('s-global-run-at')?.value || '02:00';
+  const [hour, minute] = value.split(':').map(Number);
+  _settingsData.default_cron = `${minute} ${hour} * * *`;
+  updateGlobalScheduleControls();
+  renderSettingsInstances();
+}
+
+function applyGlobalScheduleToAll() {
+  _settingsData.instances.forEach(instance => {
+    instance.libraries.forEach(library => { library.cron = ''; });
+  });
+  renderSettingsInstances();
+  updateGlobalScheduleControls();
+  toast('All libraries will use the global schedule after saving', 'pass');
+}
+
 function renderSettingsLibraries(libs, ii) {
   return libs.map((lib, li) => `
     <div class="lib-settings-item">
@@ -1763,7 +2091,7 @@ function renderSettingsLibraries(libs, ii) {
           <span style="display:flex;align-items:center;gap:10px;min-width:0;">
             <span class="lib-settings-name">${h(lib.name)}</span>
             <span class="type-chip ${lib.type}" style="font-size:9px;">${h(lib.type)}</span>
-            <span style="font-family:var(--mono);font-size:10px;color:var(--muted);">${h(lib.cron)}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--muted);">${h(lib.cron ? cronDescription(lib.cron) : `Global · ${cronDescription(_settingsData.default_cron)}`)}</span>
           </span>
           <span style="display:flex;align-items:center;gap:6px;">
             <span style="font-size:11px;color:var(--muted);">${lib.paths.length} path${lib.paths.length!==1?'s':''}</span>
@@ -1793,13 +2121,16 @@ function renderSettingsLibraries(libs, ii) {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Cron Schedule</label>
-          <select class="form-input" onchange="_settingsData.instances[${ii}].libraries[${li}].cron=this.value">
+          <label class="form-label">Library schedule</label>
+          <select class="form-input" onchange="_settingsData.instances[${ii}].libraries[${li}].cron=this.value;updateGlobalScheduleControls()">
+            <option value="" ${!lib.cron?'selected':''}>Use global — ${h(cronDescription(_settingsData.default_cron))}</option>
             <option value="*/30 * * * *" ${lib.cron==='*/30 * * * *'?'selected':''}>Every 30 minutes</option>
             <option value="0 * * * *"    ${lib.cron==='0 * * * *'?'selected':''}>Every hour</option>
             <option value="0 */2 * * *"  ${lib.cron==='0 */2 * * *'?'selected':''}>Every 2 hours</option>
             <option value="0 */6 * * *"  ${lib.cron==='0 */6 * * *'?'selected':''}>Every 6 hours</option>
             <option value="0 2 * * *"    ${lib.cron==='0 2 * * *'?'selected':''}>Daily at 2am</option>
+            ${lib.cron && !['*/30 * * * *','0 * * * *','0 */2 * * *','0 */6 * * *','0 2 * * *'].includes(lib.cron)
+              ? `<option value="${h(lib.cron)}" selected>Custom · ${h(lib.cron)}</option>` : ''}
           </select>
         </div>
         <div>
@@ -1908,7 +2239,7 @@ function settingsRemoveInstance(ii) {
 }
 
 function settingsAddLibrary(ii) {
-  _settingsData.instances[ii].libraries.push({ name:'', type:'physical', cron:'0 * * * *', paths:[] });
+  _settingsData.instances[ii].libraries.push({ name:'', type:'physical', cron:'', paths:[] });
   document.getElementById(`si-libs-${ii}`).innerHTML = renderSettingsLibraries(_settingsData.instances[ii].libraries, ii);
   // Auto-open the new library
   const newLi = _settingsData.instances[ii].libraries.length - 1;
@@ -1946,10 +2277,144 @@ function removePath(ii, li, pi, source = '_settingsData') {
     renderPathItems(data.instances[ii].libraries[li].paths, ii, li, source);
 }
 
+const NOTIFICATION_PRESETS = {
+  telegram: { label: 'Telegram', placeholder: 'tgram://BOT_TOKEN/CHAT_ID', hint: 'Create a bot with BotFather, then supply its token and target chat ID.' },
+  ntfy: { label: 'ntfy', placeholder: 'ntfy://HOST/TOPIC', hint: 'Works with ntfy.sh or a self-hosted ntfy server.' },
+  gotify: { label: 'Gotify', placeholder: 'gotify://HOST/TOKEN', hint: 'Use the application token created in Gotify.' },
+  email: { label: 'Email / SMTP', placeholder: 'mailtos://USER:PASSWORD@SMTP_HOST', hint: 'Use SMTP credentials; an app password is recommended where supported.' },
+  pushover: { label: 'Pushover', placeholder: 'pover://USER_KEY@APP_TOKEN', hint: 'Requires a Pushover user key and application token.' },
+  webhook: { label: 'Generic webhook', placeholder: 'json://HOST/PATH', hint: 'Use Apprise json://, form://, or xml:// webhook syntax.' },
+  custom: { label: 'Other Apprise URL', placeholder: 'service://credentials/target', hint: 'Accepts any service URL supported by Apprise.' },
+};
+const NOTIFICATION_EVENTS = [
+  ['emptied', 'Trash emptied'],
+  ['health_fail', 'Health check failed'],
+  ['error', 'Error'],
+  ['clean', 'Already clean'],
+  ['skip', 'Skipped'],
+];
+
+function renderNotificationDestinations() {
+  const container = document.getElementById('notification-destinations');
+  if (!container) return;
+  if (!_settingsData.notification_destinations.length) {
+    container.innerHTML = '<div class="form-hint">No Apprise destinations configured. Native Discord can still be used above.</div>';
+    return;
+  }
+  container.innerHTML = _settingsData.notification_destinations.map((destination, index) => {
+    const preset = NOTIFICATION_PRESETS[destination.service] || NOTIFICATION_PRESETS.custom;
+    const options = Object.entries(NOTIFICATION_PRESETS).map(([value, item]) =>
+      `<option value="${value}" ${destination.service===value?'selected':''}>${h(item.label)}</option>`
+    ).join('');
+    const events = NOTIFICATION_EVENTS.map(([value, label]) => `
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;">
+        <input type="checkbox" ${destination.events.includes(value)?'checked':''}
+               onchange="setNotificationEvent(${index},'${value}',this.checked)"
+               style="accent-color:var(--accent);" /> ${h(label)}
+      </label>`).join('');
+    return `
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-header">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" ${destination.enabled?'checked':''}
+                   onchange="_settingsData.notification_destinations[${index}].enabled=this.checked"
+                   style="accent-color:var(--accent);" />
+            <span class="card-title">${h(destination.name || `Destination ${index + 1}`)}</span>
+          </label>
+          <button class="btn btn-danger btn-sm" type="button" onclick="removeNotificationDestination(${index})">Remove</button>
+        </div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="notify-name-${index}">Name</label>
+              <input class="form-input" id="notify-name-${index}" value="${h(destination.name)}"
+                     onchange="_settingsData.notification_destinations[${index}].name=this.value.trim();renderNotificationDestinations()" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="notify-service-${index}">Preset</label>
+              <select class="form-input" id="notify-service-${index}"
+                      onchange="setNotificationService(${index},this.value)">${options}</select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="notify-url-${index}">Apprise URL</label>
+            <input class="form-input" type="password" autocomplete="off" id="notify-url-${index}"
+                   value="${h(destination.url)}" placeholder="${h(preset.placeholder)}"
+                   onchange="_settingsData.notification_destinations[${index}].url=this.value.trim()" />
+            <div class="form-hint">${h(preset.hint)} The secret URL is stored in config.yml and hidden in this field.</div>
+          </div>
+          <div class="form-group">
+            <div class="form-label">Route events</div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px 18px;">${events}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="btn btn-secondary btn-sm" type="button" onclick="testNotificationDestination(${index})">Send test</button>
+            <span class="form-hint" id="notify-test-${index}"></span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function addNotificationDestination() {
+  _settingsData.notification_destinations.push({
+    name: '', service: 'telegram', url: '', enabled: true,
+    events: ['emptied','health_fail','error'],
+  });
+  renderNotificationDestinations();
+}
+
+function removeNotificationDestination(index) {
+  _settingsData.notification_destinations.splice(index, 1);
+  renderNotificationDestinations();
+}
+
+function setNotificationService(index, service) {
+  _settingsData.notification_destinations[index].service = service;
+  renderNotificationDestinations();
+}
+
+function setNotificationEvent(index, event, enabled) {
+  const destination = _settingsData.notification_destinations[index];
+  const events = new Set(destination.events);
+  if (enabled) events.add(event); else events.delete(event);
+  destination.events = [...events];
+}
+
+function syncNotificationDestination(index) {
+  const destination = _settingsData.notification_destinations[index];
+  destination.name = document.getElementById(`notify-name-${index}`)?.value.trim() || '';
+  destination.service = document.getElementById(`notify-service-${index}`)?.value || 'custom';
+  destination.url = document.getElementById(`notify-url-${index}`)?.value.trim() || '';
+  return destination;
+}
+
+async function testNotificationDestination(index) {
+  const result = document.getElementById(`notify-test-${index}`);
+  const destination = syncNotificationDestination(index);
+  result.textContent = 'Sending…';
+  try {
+    const response = await fetch('/api/notifications/test', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(destination),
+    });
+    const payload = await response.json();
+    result.textContent = payload.ok ? '✓ Test sent' : `✕ ${payload.error || 'Delivery failed'}`;
+    result.style.color = payload.ok ? 'var(--success)' : 'var(--danger)';
+  } catch (error) {
+    result.textContent = `✕ ${error.message}`;
+    result.style.color = 'var(--danger)';
+  }
+}
+
 async function settingsSave() {
   // Collect notification settings
   _settingsData.discord_webhook   = document.getElementById('s-discord').value.trim();
   _settingsData.log_level         = document.getElementById('s-log-level')?.value || 'INFO';
+  _settingsData.log_max_file_size_mb = parseInt(document.getElementById('s-log-file-size')?.value ?? '5');
+  _settingsData.log_max_total_size_mb = parseInt(document.getElementById('s-log-total-size')?.value ?? '50');
+  _settingsData.log_retention_days = parseInt(document.getElementById('s-log-retention-days')?.value ?? '14');
   _settingsData.max_trash_items   = parseInt(document.getElementById('s-max-trash-items')?.value ?? '1000');
   _settingsData.max_trash_percent = parseFloat(document.getElementById('s-max-trash-percent')?.value ?? '25');
   _settingsData.notify_emptied    = document.getElementById('s-notify-emptied').checked;
@@ -1957,6 +2422,7 @@ async function settingsSave() {
   _settingsData.notify_error      = document.getElementById('s-notify-error').checked;
   _settingsData.notify_clean      = document.getElementById('s-notify-clean').checked;
   _settingsData.notify_skip       = document.getElementById('s-notify-skip').checked;
+  _settingsData.notification_destinations.forEach((_, index) => syncNotificationDestination(index));
 
   ['settings-save-btn','settings-save-btn2'].forEach(id => {
     const b = document.getElementById(id);
@@ -2099,7 +2565,7 @@ async function dryRunLib(inst, lib) {
 }
 
 // ── Wizard (first-run only) ───────────────────────────────────────────────────
-let _wizStep = 1, _wizData = { instances:[], discord_webhook:'', notify_emptied:true, notify_health_fail:true, notify_error:true, notify_clean:false, notify_skip:false };
+let _wizStep = 1, _wizData = { instances:[], default_cron:'0 * * * *', discord_webhook:'', notify_emptied:true, notify_health_fail:true, notify_error:true, notify_clean:false, notify_skip:false };
 function openWizard() { document.getElementById('wizard-overlay').classList.remove('hidden'); _wizStep=1; renderWizStep(); }
 function closeWizard() { document.getElementById('wizard-overlay').classList.add('hidden'); }
 function setWizStep(n) {
@@ -2311,7 +2777,7 @@ function importDiscoveredPlex(target) {
         name: library.title,
         section_id: library.id,
         type: 'physical',
-        cron: '0 * * * *',
+        cron: '',
         paths: [],
       });
       addedLibraries++;
@@ -2352,7 +2818,7 @@ function wizSaveInst() {
   const name=document.getElementById('wi-name').value.trim(), url=document.getElementById('wi-url').value.trim(), token=document.getElementById('wi-token').value.trim();
   if (!name||!url) { toast('Name and URL required','fail'); return; }
   const selected=[...document.querySelectorAll('#wi-lib-checks input:checked')].map(cb=>({
-    name:cb.value, section_id:cb.dataset.sectionId, type:'physical', cron:'0 * * * *', paths:[]
+    name:cb.value, section_id:cb.dataset.sectionId, type:'physical', cron:'', paths:[]
   }));
   _wizData.instances.push({ name, url, token, libraries: selected });
   document.getElementById('wiz-inst-form').style.display='none';
@@ -2385,10 +2851,11 @@ function renderWiz2(body, next) {
           <div class="form-group" style="margin-bottom:0;">
             <label class="form-label">Schedule</label>
             <select class="form-input" onchange="_wizData.instances[${ii}].libraries[${li}].cron=this.value">
-              <option value="*/30 * * * *">Every 30 min</option>
-              <option value="0 * * * *" selected>Every hour</option>
-              <option value="0 */2 * * *">Every 2 hours</option>
-              <option value="0 2 * * *">Daily at 2am</option>
+              <option value="" ${!lib.cron?'selected':''}>Use global — Every hour</option>
+              <option value="*/30 * * * *" ${lib.cron==='*/30 * * * *'?'selected':''}>Every 30 min</option>
+              <option value="0 * * * *" ${lib.cron==='0 * * * *'?'selected':''}>Every hour</option>
+              <option value="0 */2 * * *" ${lib.cron==='0 */2 * * *'?'selected':''}>Every 2 hours</option>
+              <option value="0 2 * * *" ${lib.cron==='0 2 * * *'?'selected':''}>Daily at 2am</option>
             </select>
           </div>
         </div>

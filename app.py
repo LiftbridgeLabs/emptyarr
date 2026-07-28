@@ -1,5 +1,4 @@
 import logging
-import logging.handlers
 import ipaddress
 import os
 import secrets
@@ -14,7 +13,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from src.config import (load_config, parse_config, AppConfig,
-                        PlexInstanceConfig, LibraryConfig)
+                        PlexInstanceConfig, LibraryConfig,
+                        NotificationDestination, NOTIFICATION_EVENTS)
 from src.plex_client import PlexClient
 from src.auth import (require_auth, auth_enabled, check_credentials,
                       is_authenticated, hash_password, is_locked_out,
@@ -24,7 +24,9 @@ from src.runner import get_scheduling_enabled, set_scheduling_enabled
 from src.providers import get_account_status, get_api_key
 from src.providers import _ENV_KEYS as _PROVIDER_ENV_KEYS
 from src.storage import atomic_write_yaml
+from src.logging_manager import LogManager
 from src import plex_auth
+from src import notifications
 from src.version import __version__
 
 LOG_DIR  = os.environ.get("LOG_DIR", "data/logs")
@@ -39,14 +41,8 @@ _log_formatter = logging.Formatter(
 _console = logging.StreamHandler()
 _console.setFormatter(_log_formatter)
 
-# Rotating file handler — 1MB per file, keep 5 files
-_file_handler = logging.handlers.RotatingFileHandler(
-    os.path.join(LOG_DIR, "emptyarr.log"),
-    maxBytes=1 * 1024 * 1024,  # 1MB
-    backupCount=5,
-    encoding="utf-8",
-)
-_file_handler.setFormatter(_log_formatter)
+log_manager = LogManager(LOG_DIR, _log_formatter)
+_file_handler = log_manager.handler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,6 +60,11 @@ except Exception as exc:
     logger.exception("Configuration could not be loaded; starting in recovery mode")
     config = AppConfig(instances=[], config_missing=True)
 logging.getLogger().setLevel(config.log_level.upper())
+log_manager.configure(
+    config.log_max_file_size_mb,
+    config.log_max_total_size_mb,
+    config.log_retention_days,
+)
 
 plex_clients: dict[str, PlexClient] = {
     inst.name: PlexClient(inst.url, inst.token)
@@ -158,13 +159,23 @@ def _update_next(instance_name: str, library_name: str):
             _next_runs[key] = nft.isoformat()
 
 
+def _effective_cron(target: AppConfig, lib: LibraryConfig) -> str:
+    return lib.cron or target.default_cron
+
+
+def _refresh_next_runs():
+    for inst in config.instances:
+        for lib in inst.libraries:
+            _update_next(inst.name, lib.name)
+
+
 def _setup_scheduler(new_config: AppConfig = None):
     target = new_config or config
     triggers = {}
     for inst in target.instances:
         for lib in inst.libraries:
             key = _job_key(inst.name, lib.name)
-            triggers[key] = CronTrigger.from_crontab(lib.cron)
+            triggers[key] = CronTrigger.from_crontab(_effective_cron(target, lib))
 
     scheduler.remove_all_jobs()
     _next_runs.clear()
@@ -190,6 +201,7 @@ except Exception as exc:
     logger.exception("Schedules could not be loaded; starting without jobs")
     scheduler.remove_all_jobs()
 scheduler.start()
+_refresh_next_runs()
 
 
 def _validate_provider_checks(checks, context: str) -> None:
@@ -230,7 +242,9 @@ def _validate_library(library, instance_name: str, names: set) -> None:
     library_type = str(library.get("type", "physical"))
     if library_type not in {"physical", "debrid", "usenet", "mixed"}:
         raise ValueError(f"{context}: invalid library type")
-    CronTrigger.from_crontab(str(library.get("cron", "0 * * * *")))
+    cron = str(library.get("cron", "")).strip()
+    if cron:
+        CronTrigger.from_crontab(cron)
     paths = library.get("paths", [])
     if not isinstance(paths, list):
         raise ValueError(f"{context}: paths must be a list")
@@ -273,6 +287,71 @@ def _validate_safety_limits(raw: dict) -> None:
         raise ValueError("max_trash_percent must be between 0 and 100")
 
 
+def _validate_schedule(raw: dict) -> None:
+    schedule = raw.get("schedule", {})
+    if not isinstance(schedule, dict):
+        raise ValueError("schedule must be an object")
+    CronTrigger.from_crontab(str(schedule.get("default_cron", "0 * * * *")))
+
+
+def _validate_logging(raw: dict) -> None:
+    settings = raw.get("logging", {})
+    if not isinstance(settings, dict):
+        raise ValueError("logging must be an object")
+    max_file = int(settings.get("max_file_size_mb", 5))
+    max_total = int(settings.get("max_total_size_mb", 50))
+    retention = int(settings.get("retention_days", 14))
+    if not 1 <= max_file <= 1024:
+        raise ValueError("Log file size must be between 1 MB and 1,024 MB")
+    if not max_file <= max_total <= 10240:
+        raise ValueError(
+            "Total log storage must be at least one log file and no more than 10,240 MB"
+        )
+    if not 1 <= retention <= 3650:
+        raise ValueError("Log retention must be between 1 and 3,650 days")
+
+
+_NOTIFICATION_SERVICES = {
+    "telegram", "ntfy", "gotify", "email", "pushover", "webhook", "custom",
+}
+
+
+def _validate_notifications(raw: dict) -> None:
+    settings = raw.get("notifications", {})
+    if not isinstance(settings, dict):
+        raise ValueError("notifications must be an object")
+    destinations = settings.get("destinations", [])
+    if not isinstance(destinations, list):
+        raise ValueError("notification destinations must be a list")
+    names = set()
+    for index, destination in enumerate(destinations, 1):
+        context = f"Notification destination {index}"
+        if not isinstance(destination, dict):
+            raise ValueError(f"{context} must be an object")
+        name = str(destination.get("name", "")).strip()
+        if not name:
+            raise ValueError(f"{context} requires a name")
+        if name.casefold() in names:
+            raise ValueError(f"Notification destination name '{name}' is duplicated")
+        names.add(name.casefold())
+        service = str(destination.get("service", "custom")).strip().lower()
+        if service not in _NOTIFICATION_SERVICES:
+            raise ValueError(f"{context} has unsupported preset '{service}'")
+        url = str(destination.get("url", "")).strip()
+        if not url or "://" not in url or any(char.isspace() for char in url):
+            raise ValueError(f"{context} requires a valid Apprise URL")
+        if not notifications.is_valid_apprise_url(url):
+            raise ValueError(f"{context} contains an invalid Apprise service URL")
+        events = destination.get("events", [])
+        if not isinstance(events, list) or not events:
+            raise ValueError(f"{context} must route at least one event")
+        unknown = set(events) - set(NOTIFICATION_EVENTS)
+        if unknown:
+            raise ValueError(
+                f"{context} has unsupported events: {', '.join(sorted(unknown))}"
+            )
+
+
 def _validate_raw_config(raw: dict) -> AppConfig:
     if not isinstance(raw, dict):
         raise ValueError("Configuration must be an object")
@@ -280,6 +359,9 @@ def _validate_raw_config(raw: dict) -> AppConfig:
     if not isinstance(instances, list):
         raise ValueError("plex_instances must be a list")
     _validate_safety_limits(raw)
+    _validate_schedule(raw)
+    _validate_logging(raw)
+    _validate_notifications(raw)
     instance_names = set()
     machine_ids = set()
     for instance in instances:
@@ -312,6 +394,11 @@ def _apply_runtime_config(new_config: AppConfig) -> None:
     }
     runner.prune_runtime_state(valid)
     logging.getLogger().setLevel(new_config.log_level.upper())
+    log_manager.configure(
+        new_config.log_max_file_size_mb,
+        new_config.log_max_total_size_mb,
+        new_config.log_retention_days,
+    )
     CONFIG_LOAD_ERROR = ""
 
 
@@ -375,6 +462,7 @@ def add_security_headers(response):
 # ── Template context ──────────────────────────────────────────────────────────
 
 def _build_ui_instances():
+    _refresh_next_runs()
     with _runtime_lock:
         current_instances = list(config.instances)
     inst_status = runner.get_instance_status()
@@ -388,6 +476,8 @@ def _build_ui_instances():
                 "type":     lib.type,
                 "paths":    [{"path": p.path, "type": p.type} for p in lib.paths],
                 "cron":     lib.cron,
+                "effective_cron": _effective_cron(config, lib),
+                "uses_global_schedule": not bool(lib.cron),
                 "next_run": _next_runs.get(key, "—"),
                 "status":   inst_status.get(inst.name, {}).get(lib.name, {}),
             })
@@ -403,6 +493,7 @@ def _active_config_overrides() -> list[str]:
     fixed = {
         "DISCORD_WEBHOOK",
         "LOG_LEVEL",
+        "LOG_DIR",
         "EMPTYARR_USERNAME",
         "EMPTYARR_PASSWORD",
         "RD_API_KEY",
@@ -472,6 +563,7 @@ def index():
         app_version=__version__,
         config_path=CONFIG_PATH,
         config_overrides=_active_config_overrides(),
+        scheduler_timezone=str(scheduler.timezone),
     )
 
 
@@ -494,6 +586,41 @@ def api_status():
 @require_auth
 def api_history():
     return jsonify(runner.get_history())
+
+
+@app.route("/api/logs", methods=["GET"])
+@require_auth
+def api_logs():
+    return jsonify({
+        "files": log_manager.list_files(),
+        "directory": LOG_DIR,
+        "policy": {
+            "max_file_size_mb": config.log_max_file_size_mb,
+            "max_total_size_mb": config.log_max_total_size_mb,
+            "retention_days": config.log_retention_days,
+        },
+    })
+
+
+@app.route("/api/logs/<path:filename>", methods=["GET"])
+@require_auth
+def api_log_content(filename: str):
+    result = log_manager.read_tail(filename)
+    if result is None:
+        return jsonify({"error": "Log file not found"}), 404
+    return jsonify(result)
+
+
+@app.route("/api/logs/<path:filename>/download", methods=["GET"])
+@require_auth
+def api_log_download(filename: str):
+    if log_manager.resolve_file(filename) is None:
+        return jsonify({"error": "Log file not found"}), 404
+    return send_from_directory(
+        str(log_manager.log_dir),
+        filename,
+        as_attachment=True,
+    )
 
 
 @app.route("/api/checks", methods=["GET"])
@@ -789,9 +916,11 @@ def _build_library_cfg(lib: dict, env_vars_needed: list) -> dict:
     lib_cfg = {
         "name":  lib.get("name", ""),
         "type":  lib.get("type", "physical"),
-        "cron":  lib.get("cron", "0 * * * *"),
         "paths": [_build_path_cfg(p, env_vars_needed) for p in lib.get("paths", [])],
     }
+    cron = str(lib.get("cron", "")).strip()
+    if cron:
+        lib_cfg["cron"] = cron
     if lib.get("section_id") is not None:
         lib_cfg["section_id"] = str(lib["section_id"])
     return lib_cfg
@@ -839,6 +968,11 @@ def api_wizard_save():
             existing = yaml.safe_load(f) or {}
     except Exception:
         existing = {}
+    existing_logging = (
+        existing.get("logging", {})
+        if isinstance(existing.get("logging", {}), dict)
+        else {}
+    )
 
     cfg = {
         "discord_webhook": data.get("discord_webhook", ""),
@@ -849,6 +983,14 @@ def api_wizard_save():
             "on_error":       data.get("notify_error",       True),
             "on_clean":       data.get("notify_clean",       False),
             "on_skip":        data.get("notify_skip",        False),
+        },
+        "notifications": {
+            "destinations": data.get(
+                "notification_destinations",
+                existing.get("notifications", {}).get("destinations", [])
+                if isinstance(existing.get("notifications", {}), dict)
+                else [],
+            ),
         },
         "plex_instances": [],
         "clean_bundles_before_empty": bool(
@@ -863,6 +1005,34 @@ def api_wizard_save():
         "max_trash_percent": float(
             data.get("max_trash_percent", existing.get("max_trash_percent", 25))
         ),
+        "schedule": {
+            "default_cron": str(
+                data.get(
+                    "default_cron",
+                    existing.get("schedule", {}).get("default_cron", "0 * * * *"),
+                )
+            ),
+        },
+        "logging": {
+            "max_file_size_mb": int(
+                data.get(
+                    "log_max_file_size_mb",
+                    existing_logging.get("max_file_size_mb", 5),
+                )
+            ),
+            "max_total_size_mb": int(
+                data.get(
+                    "log_max_total_size_mb",
+                    existing_logging.get("max_total_size_mb", 50),
+                )
+            ),
+            "retention_days": int(
+                data.get(
+                    "log_retention_days",
+                    existing_logging.get("retention_days", 14),
+                )
+            ),
+        },
     }
 
     # Preserve existing auth block unless new credentials are being set
@@ -898,6 +1068,31 @@ def api_wizard_save():
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/notifications/test", methods=["POST"])
+@require_auth
+def api_notifications_test():
+    """Send a test through one unsaved Apprise destination."""
+    data = request.get_json(silent=True) or {}
+    try:
+        raw = {"notifications": {"destinations": [data]}}
+        _validate_notifications(raw)
+        destination = NotificationDestination(
+            name=str(data["name"]).strip(),
+            service=str(data.get("service", "custom")).strip().lower(),
+            url=str(data["url"]).strip(),
+            enabled=True,
+            events=list(data.get("events", NOTIFICATION_EVENTS)),
+        )
+        if notifications.test_destination(destination):
+            return jsonify({"ok": True, "message": "Test notification sent."})
+        return jsonify({
+            "ok": False,
+            "error": "Apprise rejected the destination or delivery failed.",
+        }), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
 
 @app.route("/api/config/load", methods=["GET"])

@@ -4,12 +4,37 @@
 
 discord_webhook: https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN
 
+log_level: INFO
+logging:
+  max_file_size_mb: 5   # rotate the active file when it reaches this size
+  max_total_size_mb: 50 # cap all active and rotated logs combined
+  retention_days: 14    # remove rotated logs older than this
+
 notify:
   on_emptied: true       # notify when trash was actually emptied
   on_health_fail: true   # notify when health checks failed and empty was skipped
   on_error: true         # notify when emptyTrash API call failed
   on_clean: false        # notify when run succeeded but trash was already empty (noisy)
   on_skip: false         # notify when run was skipped (scheduling paused, config error)
+
+# Optional Apprise destinations. Add and test these more easily in Settings.
+# The URL contains credentials; protect config.yml and never share it.
+notifications:
+  destinations:
+    - name: Telegram alerts
+      service: telegram
+      url: tgram://BOT_TOKEN/CHAT_ID
+      enabled: true
+      events:
+        - emptied
+        - health_fail
+        - error
+    # Other examples:
+    # ntfy://ntfy.sh/emptyarr-topic
+    # gotify://gotify.example.com/APP_TOKEN
+    # mailtos://USER:PASSWORD@SMTP_HOST
+    # pover://USER_KEY@APP_TOKEN
+    # json://webhook.example.com/path
 
 # Optional server-wide maintenance action. Disabled by default because it has
 # broader scope than a single library's Empty Trash request.
@@ -18,6 +43,11 @@ clean_bundles_before_empty: false
 # Abort if a trash snapshot exceeds either limit. Set a limit to 0 to disable it.
 max_trash_items: 1000
 max_trash_percent: 25
+
+# Libraries without their own cron value inherit this global schedule.
+# The first automatic run is the next matching clock time after startup.
+schedule:
+  default_cron: "0 * * * *"  # every hour on the hour
 
 # Optional: set username/password to protect the web UI
 # Leave out to disable auth (fine for trusted local networks)
@@ -42,7 +72,7 @@ plex_instances:
     libraries:
       - name: Movies
         type: physical
-        cron: "0 * * * *"   # every hour — standard cron syntax
+        # No cron: inherits schedule.default_cron
         paths:
           - path: /mnt/user/media/movies
             type: physical
@@ -50,7 +80,6 @@ plex_instances:
 
       - name: TV Shows
         type: physical
-        cron: "0 * * * *"
         paths:
           - path: /mnt/user/media/tv
             type: physical
@@ -58,7 +87,7 @@ plex_instances:
 
       - name: Sports
         type: physical
-        cron: "0 * * * *"
+        cron: "*/30 * * * *"  # optional per-library override
         paths:
           - path: /mnt/user/media/sports
             type: physical

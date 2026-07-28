@@ -38,6 +38,16 @@ python -m unittest discover -s tests -v
 
 ### Live configuration
 
+- `test_invalid_global_cron_is_rejected_before_apply` — an invalid global
+  schedule never reaches the live scheduler.
+- `test_global_schedule_is_inherited_without_library_override` — libraries
+  without an override inherit the configured global default.
+- `test_library_schedule_override_wins_over_global_default` — an explicit
+  per-library schedule takes precedence.
+- `test_next_run_is_available_before_first_library_run` — the dashboard receives
+  the first scheduled time before any run history exists.
+- `test_invalid_log_storage_policy_is_rejected` — invalid file-size, total
+  storage, and retention combinations never reach the live logger.
 - `test_duplicate_plex_machine_identifier_is_rejected` — the same Plex server
   cannot be imported twice under different names.
 - `test_invalid_cron_is_rejected_before_apply` — invalid schedules never reach
@@ -128,6 +138,30 @@ python -m unittest discover -s tests -v
   rejected as Plex targets.
 - `test_browse_opens_at_allowed_roots_and_stays_inside_them` — filesystem
   browsing cannot escape configured roots.
+
+### Log storage and viewer API
+
+- `test_rotation_uses_readable_log_filenames` — rotations use names such as
+  `emptyarr.1.log`.
+- `test_retention_removes_expired_rotated_logs` — files beyond the configured
+  retention duration are removed.
+- `test_total_storage_removes_oldest_rotated_logs` — the total MB cap removes
+  oldest rotations first.
+- `test_log_api_lists_reads_and_rejects_unknown_files` — authenticated log
+  listing, viewing, and downloads work while arbitrary filenames are rejected.
+
+### Notification destinations
+
+- `test_apprise_destinations_are_parsed_with_routing` — saved destination
+  presets and event routes load into the live configuration.
+- `test_validation_rejects_duplicate_names` — destination names remain
+  unambiguous.
+- `test_validation_requires_at_least_one_routed_event` — a destination cannot
+  be saved without an event route.
+- `test_fanout_only_starts_enabled_matching_destinations` — delivery targets
+  only enabled destinations subscribed to the current event.
+- `test_dispatch_preserves_native_discord_and_apprise` — native Discord and
+  Apprise can receive the same enabled event.
 
 ## Static and rendered-code validation
 

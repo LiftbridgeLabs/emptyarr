@@ -5,3 +5,4 @@ pyyaml==6.0.2
 gunicorn==26.0.0
 defusedxml==0.7.1
 bcrypt==4.2.1
+apprise==1.12.0

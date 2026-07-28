@@ -1,5 +1,20 @@
 import requests
+import logging
+import threading
 from typing import List, Dict
+
+
+logger = logging.getLogger("emptyarr.notifications")
+
+
+def is_valid_apprise_url(url: str) -> bool:
+    try:
+        import apprise
+
+        client = apprise.Apprise()
+        return bool(client.add(url))
+    except Exception:
+        return False
 
 
 def _post(webhook_url: str, payload: dict):
@@ -176,3 +191,179 @@ def notify_skip(webhook_url: str, instance_name: str,
         "description": f"**Reason:** {reason}",
         "color":       0xe8a045,
     }]})
+
+
+def _checks_text(checks: Dict) -> str:
+    if not checks:
+        return ""
+    return "\n".join(
+        f"{'PASS' if result.get('pass') else 'FAIL'} — {name}: "
+        f"{result.get('detail', '')}"
+        for name, result in checks.items()
+    )
+
+
+def _apprise_delivery(destination, title: str, body: str,
+                      notify_type: str = "info") -> bool:
+    """Deliver to one Apprise URL without exposing its credentials in logs."""
+    try:
+        import apprise
+
+        client = apprise.Apprise()
+        if not client.add(destination.url):
+            logger.warning(
+                "Notification destination '%s' has an invalid Apprise URL",
+                destination.name,
+            )
+            return False
+        type_map = {
+            "success": apprise.NotifyType.SUCCESS,
+            "warning": apprise.NotifyType.WARNING,
+            "failure": apprise.NotifyType.FAILURE,
+            "info": apprise.NotifyType.INFO,
+        }
+        return bool(client.notify(
+            title=title,
+            body=body,
+            notify_type=type_map.get(notify_type, apprise.NotifyType.INFO),
+        ))
+    except Exception as exc:
+        logger.warning(
+            "Notification destination '%s' failed: %s",
+            destination.name,
+            type(exc).__name__,
+        )
+        return False
+
+
+def _apprise_fanout(config, event: str, title: str, body: str,
+                    notify_type: str = "info") -> None:
+    destinations = [
+        destination
+        for destination in config.notification_destinations
+        if destination.enabled and event in destination.events and destination.url
+    ]
+    for destination in destinations:
+        threading.Thread(
+            target=_apprise_delivery,
+            args=(destination, title, body, notify_type),
+            name=f"notify-{destination.name or 'destination'}",
+            daemon=True,
+        ).start()
+
+
+def _native_async(delivery, *args) -> None:
+    threading.Thread(
+        target=delivery,
+        args=args,
+        name="notify-discord",
+        daemon=True,
+    ).start()
+
+
+def test_destination(destination) -> bool:
+    """Synchronously send a harmless test message for Settings feedback."""
+    return _apprise_delivery(
+        destination,
+        "emptyarr notification test",
+        "This destination is configured correctly.",
+        "info",
+    )
+
+
+def dispatch_emptied(config, instance_name: str, library_name: str,
+                     removed_items: List[Dict], checks: Dict,
+    breakdown: str = "") -> None:
+    if config.discord_webhook:
+        _native_async(
+            notify_emptied,
+            config.discord_webhook, instance_name, library_name,
+            removed_items, checks, breakdown,
+        )
+    count = len(removed_items)
+    details = breakdown or f"{count} item(s)"
+    body = f"Emptied {details} from trash."
+    item_lines = _removed_item_lines(removed_items)
+    if item_lines:
+        body += "\n\n" + "\n".join(item_lines)
+    checks_text = _checks_text(checks)
+    if checks_text:
+        body += "\n\nChecks:\n" + checks_text
+    _apprise_fanout(
+        config, "emptied",
+        f"emptyarr — {instance_name} / {library_name}",
+        body, "success",
+    )
+
+
+def dispatch_clean(config, instance_name: str, library_name: str,
+                   checks: Dict) -> None:
+    if config.discord_webhook:
+        _native_async(
+            notify_clean, config.discord_webhook, instance_name, library_name, checks,
+        )
+    body = "Trash was already empty — nothing to remove."
+    checks_text = _checks_text(checks)
+    if checks_text:
+        body += "\n\nChecks:\n" + checks_text
+    _apprise_fanout(
+        config, "clean",
+        f"emptyarr — {instance_name} / {library_name}",
+        body, "success",
+    )
+
+
+def dispatch_health_fail(config, instance_name: str, library_name: str,
+                         failed_checks: Dict, all_checks: Dict) -> None:
+    if config.discord_webhook:
+        _native_async(
+            notify_health_fail,
+            config.discord_webhook, instance_name, library_name,
+            failed_checks, all_checks,
+        )
+    failed = "\n".join(
+        f"{name}: {result.get('detail', '')}"
+        for name, result in failed_checks.items()
+    )
+    body = "Health checks failed — trash empty skipped."
+    if failed:
+        body += "\n\nFailed:\n" + failed
+    checks_text = _checks_text(all_checks)
+    if checks_text:
+        body += "\n\nAll checks:\n" + checks_text
+    _apprise_fanout(
+        config, "health_fail",
+        f"emptyarr warning — {instance_name} / {library_name}",
+        body, "failure",
+    )
+
+
+def dispatch_error(config, instance_name: str, library_name: str,
+                   error: str, checks: Dict) -> None:
+    if config.discord_webhook:
+        _native_async(
+            notify_error,
+            config.discord_webhook, instance_name, library_name, error, checks,
+        )
+    body = f"emptyTrash failed:\n{error}"
+    checks_text = _checks_text(checks)
+    if checks_text:
+        body += "\n\nChecks:\n" + checks_text
+    _apprise_fanout(
+        config, "error",
+        f"emptyarr error — {instance_name} / {library_name}",
+        body, "failure",
+    )
+
+
+def dispatch_skip(config, instance_name: str, library_name: str,
+                  reason: str) -> None:
+    if config.discord_webhook:
+        _native_async(
+            notify_skip, config.discord_webhook, instance_name, library_name, reason,
+        )
+    _apprise_fanout(
+        config, "skip",
+        f"emptyarr skipped — {instance_name} / {library_name}",
+        f"Reason: {reason}", "warning",
+    )
