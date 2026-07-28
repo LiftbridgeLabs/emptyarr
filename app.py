@@ -16,7 +16,9 @@ from apscheduler.triggers.cron import CronTrigger
 from src.config import (load_config, parse_config, AppConfig,
                         PlexInstanceConfig, LibraryConfig)
 from src.plex_client import PlexClient
-from src.auth import require_auth, auth_enabled, check_credentials, is_authenticated, hash_password, is_locked_out
+from src.auth import (require_auth, auth_enabled, check_credentials,
+                      is_authenticated, hash_password, is_locked_out,
+                      has_valid_api_token, generate_api_token, hash_api_token)
 from src import runner
 from src.runner import get_scheduling_enabled, set_scheduling_enabled
 from src.providers import get_account_status, get_api_key
@@ -190,88 +192,98 @@ except Exception as exc:
 scheduler.start()
 
 
+def _validate_provider_checks(checks, context: str) -> None:
+    if not isinstance(checks, list):
+        raise ValueError(f"{context}: provider_checks must be a list")
+    for provider in checks:
+        if not isinstance(provider, dict):
+            raise ValueError(f"{context}: provider check must be an object")
+        provider_type = str(provider.get("type", ""))
+        if provider_type not in _PROVIDER_ENV_MAP:
+            raise ValueError(f"{context}: unknown provider: {provider_type}")
+
+
+def _validate_path(path, library_type: str, context: str) -> None:
+    if not isinstance(path, dict):
+        raise ValueError(f"{context}: every path must be an object")
+    if not str(path.get("path", "")).strip():
+        raise ValueError(f"{context}: path cannot be blank")
+    path_type = str(path.get("type", library_type))
+    if path_type not in {"physical", "debrid", "usenet"}:
+        raise ValueError(f"{context}: invalid path type: {path_type}")
+    threshold = float(path.get("min_threshold", 90))
+    if not 0 < threshold <= 100:
+        raise ValueError(f"{context}: threshold must be between 1 and 100")
+    _validate_provider_checks(path.get("provider_checks", []), context)
+
+
+def _validate_library(library, instance_name: str, names: set) -> None:
+    if not isinstance(library, dict):
+        raise ValueError(f"{instance_name}: every library must be an object")
+    name = str(library.get("name", "")).strip()
+    if not name:
+        raise ValueError(f"{instance_name}: every library needs a name")
+    if name in names:
+        raise ValueError(f"{instance_name}: duplicate library: {name}")
+    names.add(name)
+    context = f"{instance_name} / {name}"
+    library_type = str(library.get("type", "physical"))
+    if library_type not in {"physical", "debrid", "usenet", "mixed"}:
+        raise ValueError(f"{context}: invalid library type")
+    CronTrigger.from_crontab(str(library.get("cron", "0 * * * *")))
+    paths = library.get("paths", [])
+    if not isinstance(paths, list):
+        raise ValueError(f"{context}: paths must be a list")
+    if not paths:
+        raise ValueError(f"{context}: configure at least one filesystem path")
+    for path in paths:
+        _validate_path(path, library_type, context)
+
+
+def _validate_instance(instance, names: set, machine_ids: set) -> None:
+    if not isinstance(instance, dict):
+        raise ValueError("Every Plex instance must be an object")
+    name = str(instance.get("name", "")).strip()
+    if not name:
+        raise ValueError("Every Plex instance needs a name")
+    if name in names:
+        raise ValueError(f"Duplicate Plex instance name: {name}")
+    names.add(name)
+    machine_id = str(instance.get("machine_id", "")).strip()
+    if machine_id and machine_id in machine_ids:
+        raise ValueError(f"Duplicate Plex server identifier: {machine_id}")
+    if machine_id:
+        machine_ids.add(machine_id)
+    ok, reason = _is_valid_plex_url(str(instance.get("url", "")).strip())
+    if not ok:
+        raise ValueError(f"{name}: {reason}")
+    libraries = instance.get("libraries", [])
+    if not isinstance(libraries, list):
+        raise ValueError(f"{name}: libraries must be a list")
+    library_names = set()
+    for library in libraries:
+        _validate_library(library, name, library_names)
+
+
+def _validate_safety_limits(raw: dict) -> None:
+    if int(raw.get("max_trash_items", 1000)) < 0:
+        raise ValueError("max_trash_items cannot be negative")
+    percent = float(raw.get("max_trash_percent", 25))
+    if not 0 <= percent <= 100:
+        raise ValueError("max_trash_percent must be between 0 and 100")
+
+
 def _validate_raw_config(raw: dict) -> AppConfig:
     if not isinstance(raw, dict):
         raise ValueError("Configuration must be an object")
     instances = raw.get("plex_instances", [])
     if not isinstance(instances, list):
         raise ValueError("plex_instances must be a list")
+    _validate_safety_limits(raw)
     instance_names = set()
     machine_ids = set()
     for instance in instances:
-        if not isinstance(instance, dict):
-            raise ValueError("Every Plex instance must be an object")
-        name = str(instance.get("name", "")).strip()
-        url = str(instance.get("url", "")).strip()
-        if not name:
-            raise ValueError("Every Plex instance needs a name")
-        if name in instance_names:
-            raise ValueError(f"Duplicate Plex instance name: {name}")
-        instance_names.add(name)
-        machine_id = str(instance.get("machine_id", "")).strip()
-        if machine_id:
-            if machine_id in machine_ids:
-                raise ValueError(f"Duplicate Plex server identifier: {machine_id}")
-            machine_ids.add(machine_id)
-        ok, reason = _is_valid_plex_url(url)
-        if not ok:
-            raise ValueError(f"{name}: {reason}")
-        library_names = set()
-        libraries = instance.get("libraries", [])
-        if not isinstance(libraries, list):
-            raise ValueError(f"{name}: libraries must be a list")
-        for library in libraries:
-            if not isinstance(library, dict):
-                raise ValueError(f"{name}: every library must be an object")
-            lib_name = str(library.get("name", "")).strip()
-            if not lib_name:
-                raise ValueError(f"{name}: every library needs a name")
-            if lib_name in library_names:
-                raise ValueError(f"{name}: duplicate library: {lib_name}")
-            library_names.add(lib_name)
-            library_type = str(library.get("type", "physical"))
-            if library_type not in {"physical", "debrid", "usenet", "mixed"}:
-                raise ValueError(f"{name} / {lib_name}: invalid library type")
-            CronTrigger.from_crontab(str(library.get("cron", "0 * * * *")))
-            paths = library.get("paths", [])
-            if not isinstance(paths, list):
-                raise ValueError(f"{name} / {lib_name}: paths must be a list")
-            if not paths:
-                raise ValueError(
-                    f"{name} / {lib_name}: configure at least one filesystem path"
-                )
-            for path in paths:
-                if not isinstance(path, dict):
-                    raise ValueError(
-                        f"{name} / {lib_name}: every path must be an object"
-                    )
-                if not str(path.get("path", "")).strip():
-                    raise ValueError(f"{name} / {lib_name}: path cannot be blank")
-                path_type = str(path.get("type", library_type))
-                if path_type not in {"physical", "debrid", "usenet"}:
-                    raise ValueError(
-                        f"{name} / {lib_name}: invalid path type: {path_type}"
-                    )
-                threshold = float(path.get("min_threshold", 90))
-                if not 0 < threshold <= 100:
-                    raise ValueError(
-                        f"{name} / {lib_name}: threshold must be between 1 and 100"
-                    )
-                checks = path.get("provider_checks", [])
-                if not isinstance(checks, list):
-                    raise ValueError(
-                        f"{name} / {lib_name}: provider_checks must be a list"
-                    )
-                for provider in checks:
-                    if not isinstance(provider, dict):
-                        raise ValueError(
-                            f"{name} / {lib_name}: provider check must be an object"
-                        )
-                    provider_type = str(provider.get("type", ""))
-                    if provider_type not in _PROVIDER_ENV_MAP:
-                        raise ValueError(
-                            f"{name} / {lib_name}: unknown provider: {provider_type}"
-                        )
+        _validate_instance(instance, instance_names, machine_ids)
     return parse_config(raw)
 
 
@@ -335,9 +347,9 @@ def protect_state_changes():
         return None
     if request.endpoint == "login":
         return None
-    # Non-browser automations authenticate with the API token and are not
-    # susceptible to cookie-based CSRF.
-    if request.headers.get("X-API-Token"):
+    # Non-browser automations with a verified API token do not rely on cookies
+    # and therefore are not susceptible to cookie-based CSRF.
+    if has_valid_api_token(config):
         return None
     expected = session.get("_csrf_token", "")
     supplied = request.headers.get("X-CSRF-Token", "")
@@ -666,78 +678,78 @@ def api_browse():
     Restricted to BROWSE_ROOTS (comma-separated env var, default /mnt,/media,/data,/home).
     Requests for paths outside these roots are rejected.
     """
-    _browse_roots_raw = os.environ.get("BROWSE_ROOTS", "/mnt,/media,/data,/home")
-    _browse_roots = [
+    roots_raw = os.environ.get("BROWSE_ROOTS", "/mnt,/media,/data,/home")
+    browse_roots = [
         os.path.realpath(os.path.normpath(r.strip()))
-        for r in _browse_roots_raw.split(",") if r.strip()
+        for r in roots_raw.split(",") if r.strip()
     ]
-
     data = request.get_json(silent=True) or {}
     raw_path = data.get("path")
-
-    # An empty path represents a virtual root containing only the configured
-    # browse roots. This lets the UI offer multiple safe starting locations
-    # without granting access to the container's actual filesystem root.
     if raw_path is None or str(raw_path).strip() == "":
-        entries = []
-        for root in _browse_roots:
-            if os.path.isdir(root):
-                entries.append({
-                    "name": root,
-                    "path": root,
-                    "is_link": os.path.islink(root),
-                })
-        return jsonify({
-            "ok": True,
-            "path": "",
-            "parent": None,
-            "entries": entries,
-            "selectable": False,
-            "empty_message": (
-                "No allowed browse roots are available. Check the container "
-                "volume mappings or BROWSE_ROOTS."
-            ),
-        })
+        return jsonify(_browse_root_response(browse_roots))
 
     try:
-        # Resolve symlinks and normalise to prevent traversal tricks (e.g. ../../etc)
         path = os.path.realpath(os.path.normpath(raw_path))
-
-        # Enforce root whitelist
-        if not any(path == root or path.startswith(root.rstrip("/") + "/")
-                   for root in _browse_roots):
+        if not _path_within_roots(path, browse_roots):
             return jsonify({"ok": False, "error": "Path is outside allowed browse roots"}), 403
-
         if not os.path.exists(path):
             return jsonify({"ok": False, "error": f"Path does not exist: {path}"}), 400
-        entries = []
-        for entry in sorted(os.scandir(path), key=lambda e: e.name):
-            if entry.is_dir(follow_symlinks=False):
-                entries.append({
-                    "name":    entry.name,
-                    "path":    entry.path,
-                    "is_link": entry.is_symlink(),
-                })
-        # Compute parent, but only if it is still within an allowed root
-        raw_parent = os.path.dirname(path)
-        if path in _browse_roots:
-            parent = ""
-        else:
-            parent = raw_parent if (raw_parent != path and any(
-                raw_parent == root or raw_parent.startswith(root.rstrip("/") + "/")
-                for root in _browse_roots
-            )) else None
         return jsonify({
             "ok": True,
             "path": path,
-            "parent": parent,
-            "entries": entries,
+            "parent": _browse_parent(path, browse_roots),
+            "entries": _browse_entries(path),
             "selectable": True,
         })
     except PermissionError:
         return jsonify({"ok": False, "error": f"Permission denied: {path}"}), 403
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _path_within_roots(path: str, roots: list[str]) -> bool:
+    for root in roots:
+        try:
+            if os.path.commonpath((path, root)) == root:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _browse_root_response(roots: list[str]) -> dict:
+    entries = [
+        {"name": root, "path": root, "is_link": os.path.islink(root)}
+        for root in roots if os.path.isdir(root)
+    ]
+    return {
+        "ok": True,
+        "path": "",
+        "parent": None,
+        "entries": entries,
+        "selectable": False,
+        "empty_message": (
+            "No allowed browse roots are available. Check the container "
+            "volume mappings or BROWSE_ROOTS."
+        ),
+    }
+
+
+def _browse_entries(path: str) -> list[dict]:
+    return [
+        {"name": entry.name, "path": entry.path, "is_link": entry.is_symlink()}
+        for entry in sorted(os.scandir(path), key=lambda candidate: candidate.name)
+        if entry.is_dir(follow_symlinks=False)
+    ]
+
+
+def _browse_parent(path: str, roots: list[str]):
+    if path in roots:
+        return ""
+    parent = os.path.dirname(path)
+    if parent != path and _path_within_roots(parent, roots):
+        return parent
+    return None
 
 
 _PROVIDER_ENV_MAP = {
@@ -845,6 +857,12 @@ def api_wizard_save():
                 existing.get("clean_bundles_before_empty", False),
             )
         ),
+        "max_trash_items": int(
+            data.get("max_trash_items", existing.get("max_trash_items", 1000))
+        ),
+        "max_trash_percent": float(
+            data.get("max_trash_percent", existing.get("max_trash_percent", 25))
+        ),
     }
 
     # Preserve existing auth block unless new credentials are being set
@@ -852,6 +870,8 @@ def api_wizard_save():
     wiz_pass = data.get("auth_password", "").strip()
     if wiz_user and wiz_pass:
         cfg["auth"] = {"username": wiz_user, "password_hash": hash_password(wiz_pass)}
+        if isinstance(existing.get("auth"), dict) and existing["auth"].get("api_token_hash"):
+            cfg["auth"]["api_token_hash"] = existing["auth"]["api_token_hash"]
     elif "auth" in existing:
         cfg["auth"] = existing["auth"]
 
@@ -890,6 +910,7 @@ def api_config_load():
         # Do not send password hashes back to the browser.
         if isinstance(raw.get("auth"), dict):
             raw["auth"].pop("password_hash", None)
+            raw["auth"].pop("api_token_hash", None)
         return jsonify({"ok": True, "config": raw})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -948,19 +969,89 @@ def api_providers_save():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _require_browser_auth():
+    if not auth_enabled(config) or not is_authenticated():
+        return jsonify({
+            "ok": False,
+            "error": "Sign in through the browser to manage API tokens",
+        }), 403
+    return None
+
+
+def _update_api_token_hash(token_hash: str = ""):
+    with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
+        raw = yaml.safe_load(handle) or {}
+    auth = raw.get("auth")
+    if not auth_enabled(config):
+        raise ValueError("Set login credentials before managing an API token")
+    if not isinstance(auth, dict):
+        auth = {}
+        raw["auth"] = auth
+    if token_hash:
+        auth["api_token_hash"] = token_hash
+    else:
+        auth.pop("api_token_hash", None)
+    _save_and_apply(raw)
+
+
 @app.route("/api/auth/token", methods=["GET"])
 @require_auth
 def api_auth_token():
-    """Return the API token (password hash) for use in X-API-Token header."""
-    from src.auth import _get_credentials
-    _, ph = _get_credentials(config)
-    if not ph:
-        return jsonify({"ok": False, "error": "Auth not configured"})
+    """Return API-token status without disclosing bearer credentials."""
+    denied = _require_browser_auth()
+    if denied:
+        return denied
+    configured_by_env = bool(os.environ.get("EMPTYARR_API_TOKEN", ""))
     return jsonify({
-        "ok":    True,
-        "token": ph,
-        "usage": "Add header: X-API-Token: <token> to API requests",
+        "ok": True,
+        "configured": configured_by_env or bool(config.auth_api_token_hash),
+        "source": "environment" if configured_by_env else "config",
     })
+
+
+@app.route("/api/auth/token", methods=["POST"])
+@require_auth
+@_serialized_config_write
+def api_auth_token_generate():
+    """Generate or rotate an API token and reveal it exactly once."""
+    denied = _require_browser_auth()
+    if denied:
+        return denied
+    if os.environ.get("EMPTYARR_API_TOKEN", ""):
+        return jsonify({
+            "ok": False,
+            "error": "API token is managed by EMPTYARR_API_TOKEN",
+        }), 409
+    try:
+        token = generate_api_token()
+        _update_api_token_hash(hash_api_token(token))
+        return jsonify({
+            "ok": True,
+            "token": token,
+            "message": "Copy this token now; it cannot be shown again.",
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/auth/token", methods=["DELETE"])
+@require_auth
+@_serialized_config_write
+def api_auth_token_revoke():
+    """Revoke the independently stored API token."""
+    denied = _require_browser_auth()
+    if denied:
+        return denied
+    if os.environ.get("EMPTYARR_API_TOKEN", ""):
+        return jsonify({
+            "ok": False,
+            "error": "Remove EMPTYARR_API_TOKEN to revoke this token",
+        }), 409
+    try:
+        _update_api_token_hash()
+        return jsonify({"ok": True, "message": "API token revoked"})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @app.route("/api/auth/save", methods=["POST"])
@@ -985,15 +1076,22 @@ def api_auth_save():
                 return jsonify({"ok": False, "error": "Username required"}), 400
             if not password:
                 return jsonify({"ok": False, "error": "Password required"}), 400
+            existing_auth = raw.get("auth", {})
             raw["auth"] = {
                 "username":      username,
                 "password_hash": hash_password(password),
             }
+            if isinstance(existing_auth, dict) and existing_auth.get("api_token_hash"):
+                raw["auth"]["api_token_hash"] = existing_auth["api_token_hash"]
 
         new_config = _validate_raw_config(raw)
         atomic_write_yaml(CONFIG_PATH, raw)
         _apply_runtime_config(new_config)
 
+        if clear or not username:
+            session.pop("authenticated", None)
+        else:
+            session["authenticated"] = True
         action = "cleared" if (clear or not username) else f"set for '{username}'"
         return jsonify({"ok": True, "message": f"Auth {action} — takes effect immediately."})
     except Exception as e:

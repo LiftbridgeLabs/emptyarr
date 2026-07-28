@@ -26,56 +26,81 @@ def _check_fields(checks: Dict) -> list:
     ]
 
 
-def _format_tv_tree(items: List[Dict]) -> str:
-    """
-    Build a hierarchical show → season → episode listing for Discord.
-    Episodes are grouped under their show and season.
-    Seasons and shows without episodes are listed beneath the tree.
-    """
-    episodes = [i for i in items if i.get("type") == "episode"]
-    seasons  = [i for i in items if i.get("type") == "season"]
-    shows    = [i for i in items if i.get("type") == "show"]
-
-    # Build tree: {show_name: {season_label: [ep_labels]}}
+def _build_tv_tree(items: List[Dict]) -> dict:
     tree: dict = {}
-    for ep in episodes:
+    for ep in (item for item in items if item.get("type") == "episode"):
         show   = ep.get("grandparent_title") or ep.get("parent_title") or "Unknown Show"
         s_num  = ep.get("parent_index", "")
         season = f"Season {s_num}" if s_num else (ep.get("parent_title") or "Unknown Season")
         ep_num = ep.get("index", "")
         label  = f"Ep {ep_num} \u2013 {ep['title']}" if ep_num else ep["title"]
         tree.setdefault(show, {}).setdefault(season, []).append((int(ep_num) if str(ep_num).isdigit() else 999, label))
-
-    # Sort episodes within each season
     for show in tree:
         for season in tree[show]:
             tree[show][season].sort(key=lambda x: x[0])
             tree[show][season] = [label for _, label in tree[show][season]]
-
-    # Seasons without episodes
-    for s in seasons:
+    for s in (item for item in items if item.get("type") == "season"):
         show   = s.get("parent_title") or s.get("grandparent_title") or "Unknown Show"
         s_num  = s.get("index", "") or s.get("parent_index", "")
         season = f"Season {s_num}" if s_num else s["title"]
         tree.setdefault(show, {}).setdefault(season, [])
-
-    # Shows without seasons/episodes
-    for sh in shows:
+    for sh in (item for item in items if item.get("type") == "show"):
         tree.setdefault(sh["title"], {})
+    return tree
 
-    def _season_num(s: str) -> int:
-        parts = s.split()
-        return int(parts[-1]) if parts and parts[-1].isdigit() else 999
 
+def _season_number(label: str) -> int:
+    parts = label.split()
+    return int(parts[-1]) if parts and parts[-1].isdigit() else 999
+
+
+def _format_tv_tree(items: List[Dict]) -> str:
+    """Build a hierarchical show → season → episode listing for Discord."""
+    tree = _build_tv_tree(items)
     lines = []
     for show_name in sorted(tree):
         lines.append(f"**{show_name}**")
-        for season in sorted(tree[show_name], key=_season_num):
+        for season in sorted(tree[show_name], key=_season_number):
             lines.append(f"\u00a0\u00a0{season}")
             for ep in tree[show_name][season]:
                 lines.append(f"\u00a0\u00a0\u00a0\u00a0\u2022 {ep}")
-
     return "\n".join(lines)
+
+
+def _item_lines(items: List[Dict], limit: int, noun: str = "") -> List[str]:
+    lines = []
+    for item in items[:limit]:
+        year = f" ({item['year']})" if item.get("year") else ""
+        lines.append(f"• {item['title']}{year}")
+    if len(items) > limit:
+        suffix = f" {noun}" if noun else ""
+        lines.append(f"_…and {len(items) - limit} more{suffix}_")
+    return lines
+
+
+def _removed_item_lines(items: List[Dict]) -> List[str]:
+    tv_items = [
+        item for item in items
+        if item.get("type") in ("episode", "season", "show")
+    ]
+    movies = [item for item in items if item.get("type") == "movie"]
+    if not tv_items and not movies:
+        return _item_lines(items, 15)
+    lines = [_format_tv_tree(tv_items)] if tv_items else []
+    if movies:
+        if lines:
+            lines.append("")
+        lines.extend(_item_lines(movies, 20, "movies"))
+    return lines
+
+
+def _append_embed_body(description: str, lines: List[str]) -> str:
+    if not lines:
+        return description
+    body = "\n".join(lines)
+    if len(description) + len(body) + 2 > 4000:
+        body = body[:4000 - len(description) - 20] + "\n_…(truncated)_"
+    return f"{description}\n\n{body}"
 
 
 def notify_emptied(webhook_url: str, instance_name: str, library_name: str,
@@ -87,38 +112,9 @@ def notify_emptied(webhook_url: str, instance_name: str, library_name: str,
     count       = len(removed_items)
     description = f"Emptied **{breakdown or f'{count} item(s)'}** from trash."
 
-    has_tv     = any(i.get("type") in ("episode", "season", "show") for i in removed_items)
-    has_movies = any(i.get("type") == "movie" for i in removed_items)
-
-    body_lines = []
-
-    if has_tv:
-        tv_items = [i for i in removed_items if i.get("type") in ("episode", "season", "show")]
-        body_lines.append(_format_tv_tree(tv_items))
-
-    if has_movies:
-        movies = [i for i in removed_items if i.get("type") == "movie"]
-        if body_lines:
-            body_lines.append("")  # blank line between TV and movies
-        for m in movies[:20]:
-            year = f" ({m['year']})" if m.get("year") else ""
-            body_lines.append(f"• {m['title']}{year}")
-        if len(movies) > 20:
-            body_lines.append(f"_…and {len(movies) - 20} more movies_")
-
-    if not has_tv and not has_movies and removed_items:
-        for i in removed_items[:15]:
-            year = f" ({i['year']})" if i.get("year") else ""
-            body_lines.append(f"• {i['title']}{year}")
-        if count > 15:
-            body_lines.append(f"_…and {count - 15} more_")
-
-    if body_lines:
-        body = "\n".join(body_lines)
-        # Discord embed description cap is 4096 chars — truncate cleanly if needed
-        if len(description) + len(body) + 2 > 4000:
-            body = body[:4000 - len(description) - 20] + "\n_…(truncated)_"
-        description += f"\n\n{body}"
+    description = _append_embed_body(
+        description, _removed_item_lines(removed_items),
+    )
 
     _post(webhook_url, {"embeds": [{
         "title":       f"✅ emptyarr — {instance_name} / {library_name}",

@@ -1,0 +1,17 @@
+.git
+.github
+.agents
+.vscode
+.idea
+.env
+.env.*
+data
+tests
+tmp
+**/__pycache__
+**/*.py[cod]
+*.log
+*.md
+LICENSE
+docker-compose.yml
+unraid

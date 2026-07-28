@@ -88,6 +88,16 @@
           Required="false"
           Mask="true"></Config>
 
+  <Config Name="API Token Override (optional)"
+          Target="EMPTYARR_API_TOKEN"
+          Default=""
+          Mode=""
+          Description="Optional deployment-managed API token. Normally generate and rotate a token in emptyarr Settings."
+          Type="Variable"
+          Display="advanced"
+          Required="false"
+          Mask="true"></Config>
+
   <!-- ── Plex tokens ────────────────────────────────────────────────────── -->
   <Config Name="Plex Token (Instance 1)"
           Target="PLEX_TOKEN_INSTANCE_1"

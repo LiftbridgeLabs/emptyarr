@@ -1,6 +1,7 @@
 # Secrets — never commit
 .env
-data/config.yml
+data/*
+!data/config.yml.example
 **/.session-key
 
 # Python

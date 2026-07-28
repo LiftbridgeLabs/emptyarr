@@ -2,6 +2,8 @@ import requests
 import defusedxml.ElementTree as ET
 from typing import Optional, List, Dict
 
+from src.version import __version__
+
 
 # Plex media type IDs
 _MOVIE_TYPES = [1]        # movie
@@ -16,6 +18,49 @@ _TYPE_LABELS = {
 }
 
 
+def trash_item_key(item: Dict) -> tuple:
+    """Return the most stable identity available for a Plex trash item."""
+    rating_key = str(item.get("rating_key", ""))
+    media_id = str(item.get("media_id", ""))
+    if rating_key:
+        return ("rating", rating_key, media_id)
+    return (
+        "composite",
+        item.get("media_type_id", ""),
+        item.get("type", ""),
+        item.get("title", ""),
+        item.get("year", ""),
+        item.get("index", ""),
+        item.get("parent_title", ""),
+        item.get("parent_index", ""),
+        item.get("grandparent_title", ""),
+        media_id,
+    )
+
+
+def _deleted_item(element, type_id: int, deleted_at: int, media=None) -> Dict:
+    return {
+        "title":             element.get("title", "Unknown"),
+        "year":              element.get("year", ""),
+        "type":              _TYPE_LABELS.get(type_id, "item"),
+        "deleted_at":        deleted_at,
+        "media_type_id":     type_id,
+        "index":             element.get("index", ""),
+        "parent_title":      element.get("parentTitle", ""),
+        "parent_index":      element.get("parentIndex", ""),
+        "grandparent_title": element.get("grandparentTitle", ""),
+        "rating_key":        element.get("ratingKey", ""),
+        "media_id":          media.get("id", "") if media is not None else "",
+    }
+
+
+def _append_unique(items: List[Dict], seen: set, candidate: Dict) -> None:
+    key = trash_item_key(candidate)
+    if key not in seen:
+        items.append(candidate)
+        seen.add(key)
+
+
 class PlexClient:
     def __init__(self, url: str, token: str):
         self.url   = url.rstrip("/")
@@ -24,7 +69,7 @@ class PlexClient:
         self.session.headers.update({
             "X-Plex-Token":             token,
             "X-Plex-Product":           "emptyarr",
-            "X-Plex-Version":           "1.1.0",
+            "X-Plex-Version":           __version__,
             "X-Plex-Client-Identifier": "emptyarr",
             "Accept":                   "application/json",
         })
@@ -116,32 +161,42 @@ class PlexClient:
             root    = ET.fromstring(r.text)
             deleted = []
             for item in root:
-                # Check deletedAt on the item itself (shows, seasons)
-                def _item_dict(deleted_at: int) -> Dict:
-                    return {
-                        "title":             item.get("title", "Unknown"),
-                        "year":              item.get("year", ""),
-                        "type":              _TYPE_LABELS.get(type_id, "item"),
-                        "deleted_at":        deleted_at,
-                        "media_type_id":     type_id,
-                        "index":             item.get("index", ""),
-                        "parent_title":      item.get("parentTitle", ""),
-                        "parent_index":      item.get("parentIndex", ""),
-                        "grandparent_title": item.get("grandparentTitle", ""),
-                    }
-
                 if item.get("deletedAt"):
-                    deleted.append(_item_dict(int(item.get("deletedAt", 0))))
+                    deleted.append(_deleted_item(
+                        item, type_id, int(item.get("deletedAt", 0))
+                    ))
                 else:
                     # Check deletedAt on <Media> children (episodes with
                     # unavailable/replaced file versions)
                     for media in item.findall("Media"):
                         if media.get("deletedAt"):
-                            deleted.append(_item_dict(int(media.get("deletedAt", 0))))
+                            deleted.append(_deleted_item(
+                                item, type_id, int(media.get("deletedAt", 0)),
+                                media=media,
+                            ))
                             break  # one entry per episode
             return deleted
         except Exception:
             return None
+
+    def _legacy_trash_items(self, section_id: str) -> List[Dict]:
+        response = self._get(
+            f"/library/sections/{section_id}/all",
+            params={"trash": 1},
+        )
+        if response.status_code != 200:
+            return []
+        return [
+            {
+                "title": item.get("title", "Unknown"),
+                "year": item.get("year", ""),
+                "type": item.get("type", ""),
+                "media_type_id": 0,
+                "rating_key": item.get("ratingKey", ""),
+                "media_id": "",
+            }
+            for item in response.json().get("MediaContainer", {}).get("Metadata", [])
+        ]
 
     def get_trash_items(self, section_id: str) -> Optional[List[Dict]]:
         """
@@ -154,39 +209,19 @@ class PlexClient:
                 return None
             type_ids     = _TV_TYPES if section_type == "show" else _MOVIE_TYPES
 
-            all_items   = []
-            seen_titles = set()
-
+            all_items = []
+            seen_items = set()
             for type_id in type_ids:
                 fetched = self._fetch_deleted_xml(section_id, type_id)
                 if fetched is None:
                     return None
                 for item in fetched:
-                    # Deduplicate by title+type
-                    key = f"{item['title']}_{item['type']}"
-                    if key not in seen_titles:
-                        all_items.append(item)
-                        seen_titles.add(key)
-
-            # Also check legacy trash=1 endpoint and merge
+                    _append_unique(all_items, seen_items, item)
             try:
-                r_legacy = self._get(
-                    f"/library/sections/{section_id}/all",
-                    params={"trash": 1},
-                )
-                if r_legacy.status_code == 200:
-                    for item in r_legacy.json().get("MediaContainer", {}).get("Metadata", []):
-                        key = f"{item.get('title', '')}_{item.get('type', '')}"
-                        if key not in seen_titles:
-                            all_items.append({
-                                "title": item.get("title", "Unknown"),
-                                "year":  item.get("year", ""),
-                                "type":  item.get("type", ""),
-                                "media_type_id": 0,
-                            })
+                for item in self._legacy_trash_items(section_id):
+                    _append_unique(all_items, seen_items, item)
             except Exception:
                 pass
-
             return all_items
         except Exception:
             return None

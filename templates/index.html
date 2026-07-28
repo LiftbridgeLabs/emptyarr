@@ -221,6 +221,7 @@ nav{
   color:var(--bright);
   font:inherit;
 }
+.server-select-label{display:none;color:var(--text2);font-size:11px;font-weight:650;margin-bottom:6px;}
 .dashboard-view-panel{display:none;}
 .dashboard-view-panel.active{display:block;}
 .overview-grid{
@@ -543,13 +544,14 @@ select.form-input option{background:var(--surface2);}
   overflow:hidden;
 }
 .lib-settings-header{
-  padding:10px 14px;
   display:flex;
   align-items:center;
   justify-content:space-between;
-  cursor:pointer;
-  user-select:none;
+  gap:8px;
+  padding-right:14px;
 }
+.lib-settings-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;flex:1;padding:10px 14px;border:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer;user-select:none;}
+.lib-settings-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
 .lib-settings-name{font-size:13px;font-weight:600;color:var(--bright);}
 .lib-settings-body{padding:14px;border-top:1px solid var(--border2);display:none;}
 .lib-settings-body.open{display:block;}
@@ -602,6 +604,9 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
 /* ── WIZARD OVERLAY ── */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;}
 .overlay.hidden{display:none;}
+dialog.overlay{width:100%;max-width:none;height:100%;max-height:none;margin:0;border:0;color:inherit;}
+dialog.overlay:not([open]){display:none;}
+dialog.overlay::backdrop{background:transparent;}
 .overlay-card{background:var(--surface);border:1px solid var(--border2);border-radius:12px;width:100%;max-width:800px;}
 .overlay-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .overlay-title{font-size:15px;font-weight:700;color:var(--bright);}
@@ -698,6 +703,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
   .page,.app-footer{width:calc(100% - 28px);}
   .dashboard-intro{align-items:flex-start;flex-direction:column;}
   .server-tabs{display:none;}
+  .server-select-label{display:block;}
   .server-select{display:block;}
   .dashboard-view-switcher{display:block;margin-top:-8px;}
   .protection-main{align-items:flex-start;flex-direction:column;}
@@ -776,8 +782,9 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
               onclick="selectDashboardView('server-{{ loop.index0 }}')">{{ inst.name }}</button>
       {% endfor %}
     </div>
+    <label class="server-select-label" for="dashboard-server-select">Server view</label>
     <select class="server-select" id="dashboard-server-select"
-            onchange="selectDashboardView(this.value)" aria-label="Dashboard view">
+            onchange="selectDashboardView(this.value)">
       <option value="overview">Overview</option>
       {% for inst in instances %}
       <option value="server-{{ loop.index0 }}">{{ inst.name }}</option>
@@ -1016,6 +1023,25 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
           </div>
         </div>
 
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header"><span class="card-title">Deletion safeguards</span></div>
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="s-max-trash-items">Maximum items per run</label>
+                <input class="form-input" type="number" id="s-max-trash-items" min="0" step="1" />
+                <div class="form-hint">A run is blocked above this count. Set 0 to disable.</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="s-max-trash-percent">Maximum library percentage</label>
+                <input class="form-input" type="number" id="s-max-trash-percent" min="0" max="100" step="0.1" />
+                <div class="form-hint">Blocks unusually large trash sets relative to active items. Set 0 to disable.</div>
+              </div>
+            </div>
+            <div class="form-hint">Defaults: 1,000 items and 25%. Both enabled limits must pass.</div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-header">
             <span class="card-title">Account Status</span>
@@ -1126,12 +1152,19 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
               Use this token to authenticate API calls from scripts or automations without a browser session.
               Add it as an HTTP header: <code style="color:var(--accent2);">X-API-Token: &lt;token&gt;</code>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input type="password" id="api-token-display" readonly
-                style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--text);outline:none;"
-                placeholder="Set credentials first to generate token" />
-              <button class="btn btn-secondary btn-sm" onclick="toggleApiToken(this)">Show</button>
-              <button class="btn btn-secondary btn-sm" onclick="copyApiToken()">Copy</button>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="api-token-display">New API token</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input type="text" id="api-token-display" readonly
+                  style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--text);outline:none;"
+                  placeholder="Generated tokens are displayed here only once" />
+                <button class="btn btn-secondary btn-sm" onclick="copyApiToken()">Copy</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+              <button class="btn btn-primary btn-sm" onclick="generateApiToken()">Generate / rotate</button>
+              <button class="btn btn-danger btn-sm" onclick="revokeApiToken()">Revoke</button>
+              <span id="api-token-status" style="font-size:11px;color:var(--muted);"></span>
             </div>
             <div id="api-token-result" style="font-size:11px;margin-top:6px;"></div>
           </div>
@@ -1289,15 +1322,15 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
 </div>
 
 <!-- Recent activity detail -->
-<div class="overlay hidden" id="run-detail-overlay" onclick="closeRunDetails(event)">
-  <div class="overlay-card run-detail-card" role="dialog" aria-modal="true" aria-labelledby="run-detail-title" onclick="event.stopPropagation()">
+<dialog class="overlay" id="run-detail-overlay" aria-labelledby="run-detail-title" onclick="closeRunDetails(event)">
+  <div class="overlay-card run-detail-card" onclick="event.stopPropagation()">
     <div class="overlay-header">
       <span class="overlay-title" id="run-detail-title">Run details</span>
       <button class="btn btn-secondary btn-sm" onclick="closeRunDetails()">&#10005; close</button>
     </div>
     <div class="overlay-body" id="run-detail-body"></div>
   </div>
-</div>
+</dialog>
 
 <div id="toast"></div>
 
@@ -1548,17 +1581,15 @@ function openRunDetails(index) {
         <div class="removed-scroll">${runRemovedHtml(run)}</div>
       </div>
     </div>`;
-  overlay.classList.remove('hidden');
+  overlay.showModal();
   overlay.querySelector('button')?.focus();
 }
 
 function closeRunDetails(event) {
   if (event && event.target !== event.currentTarget) return;
-  document.getElementById('run-detail-overlay')?.classList.add('hidden');
+  const overlay = document.getElementById('run-detail-overlay');
+  if (overlay?.open) overlay.close();
 }
-document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') closeRunDetails();
-});
 
 // ── History ───────────────────────────────────────────────────────────────────
 function setFilter(f, btn) {
@@ -1617,7 +1648,7 @@ function toggleExpand(rid, row) {
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-let _settingsData = { instances: [], discord_webhook: '', log_level: 'INFO', notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
+let _settingsData = { instances: [], discord_webhook: '', log_level: 'INFO', max_trash_items: 1000, max_trash_percent: 25, notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
 
 async function loadSettings() {
   try {
@@ -1627,6 +1658,8 @@ async function loadSettings() {
     const cfg = d.config || {};
     _settingsData.discord_webhook    = cfg.discord_webhook || '';
     _settingsData.log_level          = cfg.log_level || 'INFO';
+    _settingsData.max_trash_items    = cfg.max_trash_items ?? 1000;
+    _settingsData.max_trash_percent  = cfg.max_trash_percent ?? 25;
     _settingsData.notify_emptied     = cfg.notify?.on_emptied     ?? cfg.notify?.on_success ?? true;
     _settingsData.notify_health_fail = cfg.notify?.on_health_fail ?? cfg.notify?.on_failure ?? true;
     _settingsData.notify_error       = cfg.notify?.on_error       ?? true;
@@ -1655,6 +1688,8 @@ async function loadSettings() {
     document.getElementById('s-discord').value = _settingsData.discord_webhook;
     const logLevel = document.getElementById('s-log-level');
     if (logLevel) logLevel.value = _settingsData.log_level;
+    document.getElementById('s-max-trash-items').value = _settingsData.max_trash_items;
+    document.getElementById('s-max-trash-percent').value = _settingsData.max_trash_percent;
     document.getElementById('s-notify-emptied').checked     = cfg.notify?.on_emptied     ?? cfg.notify?.on_success ?? true;
     document.getElementById('s-notify-health-fail').checked = cfg.notify?.on_health_fail  ?? cfg.notify?.on_failure ?? true;
     document.getElementById('s-notify-error').checked       = cfg.notify?.on_error        ?? true;
@@ -1721,17 +1756,23 @@ function renderSettingsInstances() {
 function renderSettingsLibraries(libs, ii) {
   return libs.map((lib, li) => `
     <div class="lib-settings-item">
-      <div class="lib-settings-header" onclick="toggleLibSettings('si-lb-${ii}-${li}')">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span class="lib-settings-name">${h(lib.name)}</span>
-          <span class="type-chip ${lib.type}" style="font-size:9px;">${h(lib.type)}</span>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--muted);">${h(lib.cron)}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span style="font-size:11px;color:var(--muted);">${lib.paths.length} path${lib.paths.length!==1?'s':''}</span>
-          <button class="btn btn-danger btn-xs" onclick="event.stopPropagation();settingsRemoveLibrary(${ii},${li})">✕</button>
-          <span style="color:var(--muted);">▾</span>
-        </div>
+      <div class="lib-settings-header">
+        <button type="button" class="lib-settings-toggle"
+                aria-expanded="false" aria-controls="si-lb-${ii}-${li}"
+                onclick="toggleLibSettings('si-lb-${ii}-${li}',this)">
+          <span style="display:flex;align-items:center;gap:10px;min-width:0;">
+            <span class="lib-settings-name">${h(lib.name)}</span>
+            <span class="type-chip ${lib.type}" style="font-size:9px;">${h(lib.type)}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--muted);">${h(lib.cron)}</span>
+          </span>
+          <span style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:11px;color:var(--muted);">${lib.paths.length} path${lib.paths.length!==1?'s':''}</span>
+            <span style="color:var(--muted);">▾</span>
+          </span>
+        </button>
+        <button type="button" class="btn btn-danger btn-xs"
+                aria-label="Remove ${h(lib.name)} library"
+                onclick="settingsRemoveLibrary(${ii},${li})">✕</button>
       </div>
       <div class="lib-settings-body" id="si-lb-${ii}-${li}">
         <div class="form-row">
@@ -1845,9 +1886,11 @@ function renderPathItems(paths, ii, li, source = '_settingsData') {
   }).join('');
 }
 
-function toggleLibSettings(id) {
+function toggleLibSettings(id, button) {
   const el = document.getElementById(id);
-  if (el) el.classList.toggle('open');
+  if (!el) return;
+  const open = el.classList.toggle('open');
+  if (button) button.setAttribute('aria-expanded', String(open));
 }
 
 function settingsAddInstance() {
@@ -1907,6 +1950,8 @@ async function settingsSave() {
   // Collect notification settings
   _settingsData.discord_webhook   = document.getElementById('s-discord').value.trim();
   _settingsData.log_level         = document.getElementById('s-log-level')?.value || 'INFO';
+  _settingsData.max_trash_items   = parseInt(document.getElementById('s-max-trash-items')?.value ?? '1000');
+  _settingsData.max_trash_percent = parseFloat(document.getElementById('s-max-trash-percent')?.value ?? '25');
   _settingsData.notify_emptied    = document.getElementById('s-notify-emptied').checked;
   _settingsData.notify_health_fail= document.getElementById('s-notify-health-fail').checked;
   _settingsData.notify_error      = document.getElementById('s-notify-error').checked;
@@ -2463,15 +2508,14 @@ async function loadApiToken() {
   try {
     const r = await fetch('/api/auth/token');
     const d = await r.json();
-    const el = document.getElementById('api-token-display');
-    if (el && d.ok) el.value = d.token;
+    const status = document.getElementById('api-token-status');
+    if (!status) return;
+    if (!d.ok) status.textContent = d.error || 'Unavailable';
+    else if (d.configured) status.textContent = d.source === 'environment'
+      ? 'Configured by environment'
+      : 'Token configured';
+    else status.textContent = 'No token configured';
   } catch(e) {}
-}
-function toggleApiToken(btn) {
-  const el = document.getElementById('api-token-display');
-  if (!el) return;
-  if (el.type === 'password') { el.type = 'text'; btn.textContent = 'Hide'; }
-  else { el.type = 'password'; btn.textContent = 'Show'; }
 }
 async function copyApiToken() {
   const el = document.getElementById('api-token-display');
@@ -2483,6 +2527,43 @@ async function copyApiToken() {
     setTimeout(() => { if(result) result.innerHTML = ''; }, 2000);
   } catch(e) {
     if (result) result.innerHTML = '<span style="color:var(--muted);">Copy failed — select and copy manually</span>';
+  }
+}
+
+async function generateApiToken() {
+  if (!confirm('Generate a new API token? Any existing token will stop working immediately.')) return;
+  const result = document.getElementById('api-token-result');
+  const display = document.getElementById('api-token-display');
+  try {
+    const r = await fetch('/api/auth/token', {method:'POST'});
+    const d = await r.json();
+    if (!d.ok) {
+      result.innerHTML=`<span style="color:var(--fail2);">âœ— ${h(d.error)}</span>`;
+      return;
+    }
+    display.value = d.token;
+    result.innerHTML='<span style="color:var(--warn2);">Copy this token now. It cannot be displayed again.</span>';
+    await loadApiToken();
+  } catch(e) {
+    result.innerHTML='<span style="color:var(--fail2);">Token generation failed</span>';
+  }
+}
+
+async function revokeApiToken() {
+  if (!confirm('Revoke the current API token? Automations using it will stop working.')) return;
+  const result = document.getElementById('api-token-result');
+  try {
+    const r = await fetch('/api/auth/token', {method:'DELETE'});
+    const d = await r.json();
+    if (!d.ok) {
+      result.innerHTML=`<span style="color:var(--fail2);">âœ— ${h(d.error)}</span>`;
+      return;
+    }
+    document.getElementById('api-token-display').value='';
+    result.innerHTML='<span style="color:var(--pass);">âœ“ API token revoked</span>';
+    await loadApiToken();
+  } catch(e) {
+    result.innerHTML='<span style="color:var(--fail2);">Token revocation failed</span>';
   }
 }
 

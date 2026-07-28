@@ -46,85 +46,55 @@ def check_mountpoint(path: str) -> Dict:
         check = parent
 
 
-def check_debrid_mount(path: str, sample_size: int = 10) -> Dict:
-    """
-    Check FUSE mount health for debrid/usenet paths by reading symlink targets
-    via os.readlink() rather than resolving them. Finds the underlying mount
-    point from target paths and verifies it is accessible and non-empty.
-
-    This handles trash scenarios where symlinks point to files that no longer
-    exist at their current location — the mount just needs to be alive.
-    """
-    if not os.path.exists(path):
-        return {"pass": False, "detail": f"Path does not exist: {path}"}
-
+def _sample_symlink_targets(path: str, sample_size: int) -> List[str]:
     targets: List[str] = []
-    try:
-        for root, dirs, files in os.walk(path, followlinks=False):
-            for name in files + dirs:
-                full = os.path.join(root, name)
-                if os.path.islink(full):
-                    try:
-                        target = os.readlink(full)
-                        if not os.path.isabs(target):
-                            target = os.path.normpath(
-                                os.path.join(os.path.dirname(full), target)
-                            )
-                        targets.append(target)
-                    except OSError:
-                        pass
-                if len(targets) >= sample_size:
-                    break
+    for root, dirs, files in os.walk(path, followlinks=False):
+        for name in files + dirs:
+            full = os.path.join(root, name)
+            if os.path.islink(full):
+                try:
+                    target = os.readlink(full)
+                    if not os.path.isabs(target):
+                        target = os.path.normpath(
+                            os.path.join(os.path.dirname(full), target)
+                        )
+                    targets.append(target)
+                except OSError:
+                    pass
             if len(targets) >= sample_size:
                 break
-    except PermissionError as e:
-        return {"pass": False, "detail": f"Permission error: {e}"}
+        if len(targets) >= sample_size:
+            break
+    return targets
 
-    if not targets:
-        return {"pass": True, "detail": f"No symlinks found in {path} — skipped"}
 
-    # For each target, walk up to find the nearest mount point.
-    # The mount just needs to be accessible and non-empty — targets don't need
-    # to resolve (they may point into trash).
-    mount_points: set = set()
-    deepest_existing_dirs: set = set()
-    for target in targets:
-        check = os.path.dirname(target)
-        deepest_existing = None
-        while True:
+def _find_target_mount(target: str) -> tuple[Optional[str], Optional[str]]:
+    check = os.path.dirname(target)
+    deepest_existing = None
+    while True:
+        if os.path.isdir(check):
+            deepest_existing = deepest_existing or check
+            try:
+                result = subprocess.run(
+                    ["mountpoint", "-q", check],
+                    capture_output=True, timeout=5
+                )
+                if result.returncode == 0:
+                    return check, deepest_existing
+            except FileNotFoundError:
+                return check, check
+            except Exception:
+                return None, deepest_existing
+        parent = os.path.dirname(check)
+        if parent == check:
             if os.path.isdir(check):
-                if deepest_existing is None:
-                    deepest_existing = check
-                try:
-                    result = subprocess.run(
-                        ["mountpoint", "-q", check],
-                        capture_output=True, timeout=5
-                    )
-                    if result.returncode == 0:
-                        mount_points.add(check)
-                        if deepest_existing:
-                            deepest_existing_dirs.add(deepest_existing)
-                        break
-                    # Not a mount point — keep walking up
-                except FileNotFoundError:
-                    # mountpoint binary unavailable — use first accessible dir
-                    mount_points.add(check)
-                    deepest_existing_dirs.add(check)
-                    break
-                except Exception:
-                    break
-            parent = os.path.dirname(check)
-            if parent == check:
-                if os.path.isdir(check):
-                    mount_points.add(check)
-                    if deepest_existing:
-                        deepest_existing_dirs.add(deepest_existing)
-                break
-            check = parent
+                return check, deepest_existing
+            return None, deepest_existing
+        check = parent
 
-    if not mount_points:
-        return {"pass": False, "detail": "Could not determine mount point from symlink targets"}
 
+def _unhealthy_directories(mount_points: set,
+                           deepest_existing_dirs: set) -> List[str]:
     failed: List[str] = []
     for directory in sorted(deepest_existing_dirs - mount_points):
         try:
@@ -141,7 +111,39 @@ def check_debrid_mount(path: str, sample_size: int = 10) -> Dict:
                 failed.append(f"{mp} (empty — mount may be dead)")
         except Exception as e:
             failed.append(f"{mp} ({e})")
+    return failed
 
+
+def check_debrid_mount(path: str, sample_size: int = 10) -> Dict:
+    """
+    Check FUSE mount health using symlink targets without resolving deleted
+    targets. The underlying mount must remain accessible and non-empty.
+    """
+    if not os.path.exists(path):
+        return {"pass": False, "detail": f"Path does not exist: {path}"}
+
+    try:
+        targets = _sample_symlink_targets(path, sample_size)
+    except PermissionError as e:
+        return {"pass": False, "detail": f"Permission error: {e}"}
+    if not targets:
+        return {"pass": True, "detail": f"No symlinks found in {path} — skipped"}
+
+    mount_points: set = set()
+    deepest_existing_dirs: set = set()
+    for target in targets:
+        mount_point, deepest_existing = _find_target_mount(target)
+        if mount_point:
+            mount_points.add(mount_point)
+        if deepest_existing:
+            deepest_existing_dirs.add(deepest_existing)
+    if not mount_points:
+        return {
+            "pass": False,
+            "detail": "Could not determine mount point from symlink targets",
+        }
+
+    failed = _unhealthy_directories(mount_points, deepest_existing_dirs)
     if failed:
         return {"pass": False, "detail": f"Debrid mount unhealthy: {'; '.join(failed)}"}
 

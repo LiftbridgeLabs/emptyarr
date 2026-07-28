@@ -15,11 +15,16 @@ notify:
 # broader scope than a single library's Empty Trash request.
 clean_bundles_before_empty: false
 
+# Abort if a trash snapshot exceeds either limit. Set a limit to 0 to disable it.
+max_trash_items: 1000
+max_trash_percent: 25
+
 # Optional: set username/password to protect the web UI
 # Leave out to disable auth (fine for trusted local networks)
 # Or configure via Settings → Security in the UI
 auth:
   username: admin
+  # API token hashes are managed automatically; generate tokens in Settings.
   password_hash: ""  # set via Settings UI — never enter plaintext here
 
 # Optional: debrid provider API keys for health checks

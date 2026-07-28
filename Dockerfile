@@ -12,9 +12,12 @@ WORKDIR /app
 RUN mkdir -p /app/data && touch /app/data/config.yml
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 
-COPY . .
+COPY app.py entrypoint.sh ./
+COPY src ./src
+COPY static ./static
+COPY templates ./templates
 
 RUN chmod +x /app/entrypoint.sh && \
     chown -R appuser:appgroup /app

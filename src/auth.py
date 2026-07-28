@@ -15,6 +15,16 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)).decode()
 
 
+def generate_api_token() -> str:
+    """Generate a high-entropy bearer token that is independent of login auth."""
+    return f"emptyarr_{secrets.token_urlsafe(32)}"
+
+
+def hash_api_token(token: str) -> str:
+    """Hash a random API token for storage and constant-time verification."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def _legacy_hash(password: str) -> str:
     """SHA-256 hash used for env-var auth path (deterministic — needed for stable X-API-Token)."""
     return hashlib.sha256(f"emptyarr:{password}".encode()).hexdigest()
@@ -104,11 +114,26 @@ def is_authenticated() -> bool:
     return session.get("authenticated") is True
 
 
+def has_valid_api_token(config=None) -> bool:
+    """Return whether this request carries the configured API token."""
+    token = request.headers.get("X-API-Token", "")
+    if not token:
+        return False
+    configured_token = os.environ.get("EMPTYARR_API_TOKEN", "")
+    expected_hash = (
+        hash_api_token(configured_token)
+        if configured_token
+        else getattr(config, "auth_api_token_hash", "")
+    )
+    supplied_hash = hash_api_token(token)
+    return bool(expected_hash and secrets.compare_digest(supplied_hash, expected_hash))
+
+
 def require_auth(f):
     """
     Redirect to login for page requests, 401 for API requests.
     API requests can authenticate via session cookie OR X-API-Token header.
-    The API token is the stored password hash (from /api/auth/token).
+    API tokens are generated independently from the login password.
     """
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -120,11 +145,8 @@ def require_auth(f):
             return f(*args, **kwargs)
         # Check X-API-Token header for API requests
         if request.path.startswith("/api/"):
-            api_token = request.headers.get("X-API-Token", "")
-            if api_token:
-                _, ph = _get_credentials(_config)
-                if ph and secrets.compare_digest(api_token, ph):
-                    return f(*args, **kwargs)
+            if has_valid_api_token(_config):
+                return f(*args, **kwargs)
             return jsonify({"error": "Unauthorized — set credentials or provide X-API-Token header"}), 401
         return redirect(url_for("login"))
     return decorated

@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import yaml
+
 _TEST_ROOT = Path(__file__).resolve().parent
 os.environ.setdefault("LOG_DIR", str(_TEST_ROOT / ".runtime-logs"))
 os.environ.setdefault("CONFIG_PATH", str(_TEST_ROOT / ".runtime-bootstrap.yml"))
@@ -12,12 +14,13 @@ os.environ.setdefault("STATE_FILE", str(_TEST_ROOT / ".runtime-state.json"))
 os.environ.setdefault("PLEX_CLIENT_ID_FILE", str(_TEST_ROOT / ".runtime-client.json"))
 
 import app
-from src.checks import check_file_threshold
+from src.checks import check_debrid_mount, check_file_threshold
 from src.config import (AppConfig, LibraryConfig, PathConfig,
                         PlexInstanceConfig, ProviderCheck, parse_config)
 from src.plex_client import PlexClient
 from src import runner
 from src import plex_auth
+from src.auth import hash_api_token
 
 
 class WebSecurityTests(unittest.TestCase):
@@ -38,6 +41,102 @@ class WebSecurityTests(unittest.TestCase):
             headers={"X-CSRF-Token": "known-token"},
         )
         self.assertEqual(response.status_code, 200)
+
+    def test_invalid_api_token_does_not_bypass_csrf(self):
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["authenticated"] = True
+        with patch.object(app.config, "auth_username", "admin"), \
+             patch.object(app.config, "auth_password_hash", "password-hash"), \
+             patch.object(app.config, "auth_api_token_hash",
+                          hash_api_token("configured-api-token")):
+            response = client.post(
+                "/api/scheduling",
+                json={"enabled": True},
+                headers={"X-API-Token": "incorrect-api-token"},
+            )
+        self.assertEqual(response.status_code, 403)
+
+    def test_valid_api_token_authenticates_without_csrf(self):
+        client = app.app.test_client()
+        with patch.object(app.config, "auth_username", "admin"), \
+             patch.object(app.config, "auth_password_hash", "password-hash"), \
+             patch.object(app.config, "auth_api_token_hash",
+                          hash_api_token("configured-api-token")):
+            response = client.post(
+                "/api/scheduling",
+                json={"enabled": True},
+                headers={"X-API-Token": "configured-api-token"},
+            )
+        self.assertEqual(response.status_code, 200)
+
+    def test_password_hash_is_not_an_api_token(self):
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["authenticated"] = True
+        with patch.object(app.config, "auth_username", "admin"), \
+             patch.object(app.config, "auth_password_hash", "password-hash"), \
+             patch.object(app.config, "auth_api_token_hash",
+                          hash_api_token("configured-api-token")):
+            response = client.post(
+                "/api/scheduling",
+                json={"enabled": True},
+                headers={"X-API-Token": "password-hash"},
+            )
+        self.assertEqual(response.status_code, 403)
+
+    def test_generated_api_token_is_revealed_once(self):
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["authenticated"] = True
+            browser_session["_csrf_token"] = "known-token"
+        headers = {"X-CSRF-Token": "known-token"}
+        with patch.object(app.config, "auth_username", "admin"), \
+             patch.object(app.config, "auth_password_hash", "password-hash"), \
+             patch.object(app, "generate_api_token",
+                          return_value="emptyarr_new-secret"), \
+             patch.object(app, "_update_api_token_hash") as update:
+            generated = client.post("/api/auth/token", headers=headers)
+            status = client.get("/api/auth/token")
+        self.assertEqual(generated.status_code, 200)
+        self.assertEqual(generated.get_json()["token"], "emptyarr_new-secret")
+        update.assert_called_once_with(hash_api_token("emptyarr_new-secret"))
+        self.assertNotIn("token", status.get_json())
+
+    def test_generated_api_token_persists_only_its_hash(self):
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["authenticated"] = True
+            browser_session["_csrf_token"] = "known-token"
+        config_path = _TEST_ROOT / ".runtime-token-config.yml"
+        config_path.write_text(
+            yaml.safe_dump({
+                "auth": {
+                    "username": "admin",
+                    "password_hash": "password-hash",
+                },
+                "plex_instances": [],
+            }),
+            encoding="utf-8",
+        )
+        with patch.object(app, "CONFIG_PATH", str(config_path)), \
+             patch.object(app.config, "auth_username", "admin"), \
+             patch.object(app.config, "auth_password_hash", "password-hash"), \
+             patch.object(app, "generate_api_token",
+                          return_value="emptyarr_new-secret"), \
+             patch.object(app, "_apply_runtime_config"):
+            response = client.post(
+                "/api/auth/token",
+                headers={"X-CSRF-Token": "known-token"},
+            )
+        saved_text = config_path.read_text(encoding="utf-8")
+        saved = yaml.safe_load(saved_text)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            saved["auth"]["api_token_hash"],
+            hash_api_token("emptyarr_new-secret"),
+        )
+        self.assertNotIn("emptyarr_new-secret", saved_text)
 
     def test_metadata_address_is_rejected(self):
         ok, _ = app._is_valid_plex_url("http://169.254.10.10:32400")
@@ -171,14 +270,79 @@ class PlexClientTests(unittest.TestCase):
              patch.object(client, "_fetch_deleted_xml", return_value=None):
             self.assertIsNone(client.get_trash_items("1"))
 
+    def test_trash_inventory_keeps_same_title_with_distinct_plex_ids(self):
+        client = PlexClient("http://plex:32400", "token")
+        duplicate_titles = [
+            {"title": "Pilot", "type": "episode", "rating_key": "1"},
+            {"title": "Pilot", "type": "episode", "rating_key": "2"},
+        ]
+        legacy = Mock(status_code=200)
+        legacy.json.return_value = {"MediaContainer": {"Metadata": []}}
+        with patch.object(client, "get_section_type", return_value="show"), \
+             patch.object(client, "_fetch_deleted_xml",
+                          side_effect=[duplicate_titles, [], []]), \
+             patch.object(client, "_get", return_value=legacy):
+            items = client.get_trash_items("1")
+        self.assertEqual(len(items), 2)
+
 
 class SafetyTests(unittest.TestCase):
+    @staticmethod
+    def _run_objects(max_items=1000, max_percent=25):
+        path = PathConfig(path="/media", type="physical", min_threshold=0.9)
+        library = LibraryConfig(
+            "Movies", "physical", [path], section_id="1",
+        )
+        instance = PlexInstanceConfig(
+            "Plex", "http://plex", "token", [library],
+        )
+        config = AppConfig(
+            instances=[instance],
+            max_trash_items=max_items,
+            max_trash_percent=max_percent,
+        )
+        plex = Mock()
+        plex.check_reachable.return_value = {"pass": True, "detail": "ok"}
+        plex.get_library_item_count.return_value = 100
+        plex.empty_trash.return_value = {"ok": True, "http": 200}
+        return instance, library, config, plex
+
+    @staticmethod
+    def _run_with_checks(instance, library, config, plex,
+                         mount_result=None, file_result=None, **kwargs):
+        mount_result = mount_result or {"pass": True, "detail": "mounted"}
+        file_result = file_result or {"pass": True, "detail": "files ok"}
+        with patch("src.runner.check_mountpoint", return_value=mount_result), \
+             patch("src.runner.check_file_threshold", return_value=file_result), \
+             patch("src.runner.time.sleep"):
+            runner.run_library(instance, library, config, plex, **kwargs)
+
     def test_missing_plex_count_fails_closed(self):
         with patch("src.checks.count_files", return_value=1):
             directory = "/media"
             result = check_file_threshold(directory, 0.9, None)
         self.assertFalse(result["pass"])
         self.assertIn("refusing", result["detail"])
+
+    def test_debrid_mount_passes_when_discovered_mount_is_populated(self):
+        with patch("src.checks.os.path.exists", return_value=True), \
+             patch("src.checks._sample_symlink_targets",
+                   return_value=["/mnt/cache/movie.mkv"]), \
+             patch("src.checks._find_target_mount",
+                   return_value=("/mnt/cache", "/mnt/cache")), \
+             patch("src.checks.os.listdir", return_value=["movie.mkv"]):
+            result = check_debrid_mount("/media")
+        self.assertTrue(result["pass"])
+
+    def test_debrid_mount_fails_when_discovered_mount_is_empty(self):
+        with patch("src.checks.os.path.exists", return_value=True), \
+             patch("src.checks._sample_symlink_targets",
+                   return_value=["/mnt/cache/movie.mkv"]), \
+             patch("src.checks._find_target_mount",
+                   return_value=("/mnt/cache", "/mnt/cache")), \
+             patch("src.checks.os.listdir", return_value=[]):
+            result = check_debrid_mount("/media")
+        self.assertFalse(result["pass"])
 
     def test_provider_checks_receive_live_config(self):
         config = AppConfig(
@@ -226,6 +390,174 @@ class SafetyTests(unittest.TestCase):
             thread.join(2)
         record.assert_called_once()
         self.assertIn("already in progress", record.call_args.args[4])
+
+    def test_failed_health_check_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        self._run_with_checks(
+            instance, library, config, plex,
+            mount_result={"pass": False, "detail": "mount missing"},
+        )
+        plex.get_trash_items.assert_not_called()
+        plex.empty_trash.assert_not_called()
+
+    def test_unreachable_plex_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        plex.check_reachable.return_value = {
+            "pass": False, "detail": "Plex unreachable",
+        }
+        self._run_with_checks(instance, library, config, plex)
+        plex.get_trash_items.assert_not_called()
+        plex.empty_trash.assert_not_called()
+
+    def test_missing_count_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        plex.get_library_item_count.return_value = None
+        with patch(
+            "src.runner.check_mountpoint",
+            return_value={"pass": True, "detail": "mounted"},
+        ), patch("src.checks.count_files", return_value=100):
+            runner.run_library(instance, library, config, plex)
+        plex.get_trash_items.assert_not_called()
+        plex.empty_trash.assert_not_called()
+
+    def test_failed_provider_check_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        library.paths[0].provider_checks = [
+            ProviderCheck(type="realdebrid", api_key="key"),
+        ]
+        with patch(
+            "src.runner.check_mountpoint",
+            return_value={"pass": True, "detail": "mounted"},
+        ), patch(
+            "src.runner.check_file_threshold",
+            return_value={"pass": True, "detail": "files ok"},
+        ), patch(
+            "src.runner.check_provider",
+            return_value={"pass": False, "detail": "provider unavailable"},
+        ):
+            runner.run_library(instance, library, config, plex)
+        plex.get_trash_items.assert_not_called()
+        plex.empty_trash.assert_not_called()
+
+    def test_missing_section_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        library.section_id = None
+        plex.find_section_id.return_value = None
+        self._run_with_checks(instance, library, config, plex)
+        plex.get_trash_items.assert_not_called()
+        plex.empty_trash.assert_not_called()
+
+    def test_failed_initial_inventory_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        plex.get_trash_items.return_value = None
+        self._run_with_checks(instance, library, config, plex)
+        plex.empty_trash.assert_not_called()
+
+    def test_dry_run_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        plex.get_trash_items.return_value = [
+            {"type": "movie", "title": "One", "rating_key": "1"},
+        ]
+        self._run_with_checks(
+            instance, library, config, plex, dry_run=True, manual=True,
+        )
+        plex.empty_trash.assert_not_called()
+
+    def test_clean_bundles_failure_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        config.clean_bundles_before_empty = True
+        plex.get_trash_items.return_value = [
+            {"type": "movie", "title": "One", "rating_key": "1"},
+        ]
+        plex.clean_bundles.return_value = {"ok": False, "http": 500}
+        self._run_with_checks(instance, library, config, plex)
+        plex.empty_trash.assert_not_called()
+
+    def test_paused_scheduling_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        runner.set_scheduling_enabled(False)
+        try:
+            self._run_with_checks(instance, library, config, plex)
+        finally:
+            runner.set_scheduling_enabled(True)
+        plex.empty_trash.assert_not_called()
+
+    def test_failed_final_preflight_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        items = [{"type": "movie", "title": "One", "rating_key": "1"}]
+        plex.get_trash_items.return_value = items
+        with patch(
+            "src.runner.check_mountpoint",
+            side_effect=[
+                {"pass": True, "detail": "mounted"},
+                {"pass": False, "detail": "mount disappeared"},
+            ],
+        ), patch(
+            "src.runner.check_file_threshold",
+            return_value={"pass": True, "detail": "files ok"},
+        ), patch("src.runner.time.sleep"):
+            runner.run_library(instance, library, config, plex)
+        plex.empty_trash.assert_not_called()
+
+    def test_changed_trash_snapshot_never_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        initial = [{"type": "movie", "title": "One", "rating_key": "1"}]
+        changed = initial + [
+            {"type": "movie", "title": "Two", "rating_key": "2"},
+        ]
+        plex.get_trash_items.side_effect = [initial, changed]
+        self._run_with_checks(instance, library, config, plex)
+        plex.empty_trash.assert_not_called()
+
+    def test_deletion_limit_never_empties_oversized_snapshot(self):
+        instance, library, config, plex = self._run_objects(
+            max_items=1, max_percent=0,
+        )
+        items = [
+            {"type": "movie", "title": "One", "rating_key": "1"},
+            {"type": "movie", "title": "Two", "rating_key": "2"},
+        ]
+        plex.get_trash_items.side_effect = [items, items]
+        self._run_with_checks(instance, library, config, plex)
+        plex.empty_trash.assert_not_called()
+
+    def test_percentage_limit_never_empties_oversized_snapshot(self):
+        instance, library, config, plex = self._run_objects(
+            max_items=0, max_percent=1,
+        )
+        items = [
+            {"type": "movie", "title": "One", "rating_key": "1"},
+            {"type": "movie", "title": "Two", "rating_key": "2"},
+        ]
+        plex.get_trash_items.side_effect = [items, items]
+        self._run_with_checks(instance, library, config, plex)
+        plex.empty_trash.assert_not_called()
+
+    def test_empty_snapshot_does_not_call_empty_trash(self):
+        instance, library, config, plex = self._run_objects()
+        plex.get_trash_items.return_value = []
+        self._run_with_checks(instance, library, config, plex)
+        plex.empty_trash.assert_not_called()
+
+    def test_manual_run_can_bypass_paused_scheduler(self):
+        instance, library, config, plex = self._run_objects()
+        items = [{"type": "movie", "title": "One", "rating_key": "1"}]
+        plex.get_trash_items.side_effect = [items, items, []]
+        runner.set_scheduling_enabled(False)
+        try:
+            self._run_with_checks(
+                instance, library, config, plex, manual=True,
+            )
+        finally:
+            runner.set_scheduling_enabled(True)
+        plex.empty_trash.assert_called_once_with("1")
+
+    def test_successful_run_has_one_destructive_call(self):
+        instance, library, config, plex = self._run_objects()
+        items = [{"type": "movie", "title": "One", "rating_key": "1"}]
+        plex.get_trash_items.side_effect = [items, items, []]
+        self._run_with_checks(instance, library, config, plex)
+        plex.empty_trash.assert_called_once_with("1")
 
 
 class LiveConfigTests(unittest.TestCase):

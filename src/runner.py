@@ -3,11 +3,12 @@ import logging
 import os
 import threading
 import time
+from collections import Counter
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from src.config import AppConfig, LibraryConfig, PathConfig, PlexInstanceConfig
-from src.plex_client import PlexClient
+from src.plex_client import PlexClient, trash_item_key
 from src.checks import check_mountpoint, check_debrid_mount, check_file_threshold, count_files
 from src.providers import check_provider
 from src import notifications
@@ -214,27 +215,54 @@ def _breakdown(items: list) -> str:
     return ", ".join(parts) if parts else f"{len(items)} item(s)"
 
 
-def _trash_item_key(item: Dict) -> tuple:
-    return (
-        item.get("media_type_id", ""),
-        item.get("type", ""),
-        item.get("title", ""),
-        item.get("year", ""),
-        item.get("index", ""),
-        item.get("parent_title", ""),
-        item.get("parent_index", ""),
-        item.get("grandparent_title", ""),
-    )
-
-
 def _items_removed(before: List[Dict], after: List[Dict]) -> List[Dict]:
-    after_keys = {_trash_item_key(item) for item in after}
-    return [item for item in before if _trash_item_key(item) not in after_keys]
+    remaining = Counter(trash_item_key(item) for item in after)
+    removed = []
+    for item in before:
+        key = trash_item_key(item)
+        if remaining[key]:
+            remaining[key] -= 1
+        else:
+            removed.append(item)
+    return removed
 
 
 def _headline_count(items: List[Dict]) -> int:
     episode_count = sum(1 for i in items if i.get("type") == "episode")
     return episode_count if episode_count > 0 else len(items)
+
+
+def _trash_snapshots_match(before: List[Dict], after: List[Dict]) -> bool:
+    return (
+        Counter(trash_item_key(item) for item in before)
+        == Counter(trash_item_key(item) for item in after)
+    )
+
+
+def _deletion_limit_check(config: AppConfig, items: List[Dict],
+                          plex_count: Optional[int]) -> Dict:
+    count = _headline_count(items)
+    max_items = max(0, int(config.max_trash_items))
+    max_percent = max(0.0, float(config.max_trash_percent))
+    if max_items and count > max_items:
+        return {
+            "pass": False,
+            "detail": f"{count} items exceeds the configured limit of {max_items}",
+        }
+    if max_percent and plex_count and plex_count > 0:
+        percent = count / plex_count * 100
+        if percent > max_percent:
+            return {
+                "pass": False,
+                "detail": (
+                    f"{count} items is {percent:.1f}% of the active library, "
+                    f"above the configured {max_percent:g}% limit"
+                ),
+            }
+    return {
+        "pass": True,
+        "detail": f"{count} items within configured deletion limits",
+    }
 
 
 def _handle_checks_failed(config, instance, library, all_checks, failed):
@@ -259,7 +287,7 @@ def _handle_dry_run(instance, library, trash_items, all_checks, headline_count):
             trash_items, removed_count=headline_count)
 
 
-def _handle_empty_failed(config, instance, library, result, all_checks, trash_items):
+def _handle_empty_failed(config, instance, library, result, all_checks):
     msg = f"emptyTrash failed: {result.get('error', result.get('http'))}"
     logger.error(f"[{instance.name} / {library.name}] {msg}")
     _record(instance.name, library.name, "error", all_checks, msg,
@@ -309,6 +337,76 @@ def _handle_section_not_found(config, instance, library):
         notifications.notify_skip(config.discord_webhook, instance.name, library.name, msg)
 
 
+def _collect_library_checks(instance: PlexInstanceConfig,
+                            library: LibraryConfig,
+                            config: AppConfig,
+                            plex: PlexClient,
+                            plex_checks: Optional[Dict] = None,
+                            section_id: Optional[str] = None) -> tuple[Dict, Optional[int]]:
+    all_checks = dict(plex_checks or run_instance_checks(instance, plex))
+    plex_count = plex.get_library_item_count(
+        section_id or library.section_id or plex.find_section_id(library.name)
+    )
+    is_mixed = library.type == "mixed"
+    for path_cfg in library.paths:
+        all_checks.update(_run_path_checks(
+            path_cfg, plex_count, config, skip_threshold=is_mixed
+        ))
+    if is_mixed and library.paths:
+        all_checks["Files (combined)"] = _run_mixed_threshold(library, plex_count)
+    return all_checks, plex_count
+
+
+def _failed_checks(checks: Dict) -> Dict:
+    return {name: result for name, result in checks.items() if not result["pass"]}
+
+
+def _record_inventory_error(config, instance, library, checks, message):
+    logger.error(f"[{instance.name} / {library.name}] {message}")
+    _record(instance.name, library.name, "error", checks, message)
+    if config.notify.on_error and config.discord_webhook:
+        notifications.notify_error(
+            config.discord_webhook, instance.name, library.name, message, checks,
+        )
+
+
+def _confirm_preflight(config: AppConfig, instance: PlexInstanceConfig,
+                       library: LibraryConfig, plex: PlexClient,
+                       section_id: str, original_items: List[Dict]):
+    checks, plex_count = _collect_library_checks(
+        instance, library, config, plex, section_id=section_id,
+    )
+    failed = _failed_checks(checks)
+    if failed:
+        _handle_checks_failed(config, instance, library, checks, failed)
+        return None, checks
+
+    confirmed_items = plex.get_trash_items(section_id)
+    if confirmed_items is None:
+        _record_inventory_error(
+            config, instance, library, checks,
+            "Final trash inventory failed — refusing to empty",
+        )
+        return None, checks
+    snapshot_stable = _trash_snapshots_match(original_items, confirmed_items)
+    checks["Trash snapshot"] = {
+        "pass": snapshot_stable,
+        "detail": (
+            "Trash snapshot remained stable"
+            if snapshot_stable
+            else "Trash changed after the initial inventory — refusing to empty"
+        ),
+    }
+    checks["Deletion limit"] = _deletion_limit_check(
+        config, confirmed_items, plex_count,
+    )
+    failed = _failed_checks(checks)
+    if failed:
+        _handle_checks_failed(config, instance, library, checks, failed)
+        return None, checks
+    return confirmed_items, checks
+
+
 def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
                 config: AppConfig, plex: PlexClient,
                 plex_checks: Optional[Dict] = None,
@@ -349,44 +447,33 @@ def _run_library(instance: PlexInstanceConfig, library: LibraryConfig,
         _handle_section_not_found(config, instance, library)
         return
 
-    all_checks = dict(plex_checks or run_instance_checks(instance, plex))
-    plex_count  = plex.get_library_item_count(section_id)
-    is_mixed    = library.type == "mixed"
-
-    for path_cfg in library.paths:
-        # For mixed libraries skip individual threshold — use combined check below
-        all_checks.update(_run_path_checks(
-            path_cfg, plex_count, config, skip_threshold=is_mixed
-        ))
-
-    if is_mixed and library.paths:
-        all_checks["Files (combined)"] = _run_mixed_threshold(library, plex_count)
-
-    failed = {n: c for n, c in all_checks.items() if not c["pass"]}
+    all_checks, _ = _collect_library_checks(
+        instance, library, config, plex, plex_checks, section_id=section_id,
+    )
+    failed = _failed_checks(all_checks)
     if failed:
         _handle_checks_failed(config, instance, library, all_checks, failed)
         return
 
     trash_items = plex.get_trash_items(section_id)
     if trash_items is None:
-        msg = "Could not inventory Plex trash — refusing to empty"
-        logger.error(f"[{instance.name} / {library.name}] {msg}")
-        _record(instance.name, library.name, "error", all_checks, msg)
-        if config.notify.on_error and config.discord_webhook:
-            notifications.notify_error(
-                config.discord_webhook, instance.name, library.name,
-                msg, all_checks,
-            )
+        _record_inventory_error(
+            config, instance, library, all_checks,
+            "Could not inventory Plex trash — refusing to empty",
+        )
         return
-    trash_count    = len(trash_items)
-
     if dry_run:
         _handle_dry_run(instance, library, trash_items, all_checks,
                         _headline_count(trash_items))
         return
+    if not trash_items:
+        _handle_empty_success(
+            config, instance, library, trash_items, all_checks, [],
+        )
+        return
 
     logger.info(f"[{instance.name} / {library.name}] "
-                f"{_breakdown(trash_items)} in trash snapshot, emptying…")
+                f"{_breakdown(trash_items)} in trash snapshot; running final preflight")
 
     # Clean Bundles is a server-wide maintenance action and therefore opt-in.
     if config.clean_bundles_before_empty:
@@ -396,21 +483,31 @@ def _run_library(instance: PlexInstanceConfig, library: LibraryConfig,
                 config, instance, library,
                 {"error": "Clean Bundles failed: "
                           f"{clean_result.get('error', clean_result.get('http'))}"},
-                all_checks, trash_items,
+                all_checks,
             )
             return
+
+    confirmed_items, all_checks = _confirm_preflight(
+        config, instance, library, plex, section_id, trash_items,
+    )
+    if confirmed_items is None:
+        return
+    trash_items = confirmed_items
+
+    # Keep this as the single destructive Empty Trash call site.
     result = plex.empty_trash(section_id)
 
     if not result["ok"]:
-        _handle_empty_failed(config, instance, library, result, all_checks, trash_items)
+        _handle_empty_failed(config, instance, library, result, all_checks)
         return
 
     time.sleep(2)
     remaining_items = plex.get_trash_items(section_id)
     if remaining_items is None:
-        msg = "emptyTrash succeeded, but verification inventory failed"
-        logger.error(f"[{instance.name} / {library.name}] {msg}")
-        _record(instance.name, library.name, "error", all_checks, msg)
+        _record_inventory_error(
+            config, instance, library, all_checks,
+            "emptyTrash succeeded, but verification inventory failed",
+        )
         return
     removed_items = _items_removed(trash_items, remaining_items)
 

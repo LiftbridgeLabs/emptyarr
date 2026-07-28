@@ -176,6 +176,10 @@ notify:
 # Enable only if you intentionally want it before each library trash operation.
 clean_bundles_before_empty: false
 
+# Abort unusually large empty-trash runs (0 disables a limit)
+max_trash_items: 1000
+max_trash_percent: 25
+
 plex_instances:
   - name: My Plex
     url: http://192.168.1.100:32400
@@ -226,6 +230,11 @@ plex_instances:
 Settings → Security. Enter username and password, save. Takes effect immediately, no restart needed. Stored as a bcrypt hash in config.yml — never plaintext.
 
 You can also set `EMPTYARR_USERNAME` and `EMPTYARR_PASSWORD` env vars instead (these take priority).
+
+API access uses a separate random token; the login password hash is never an
+API credential. Generate or rotate the token under Settings â†’ Security and
+copy it when shownâ€”emptyarr stores only its hash and cannot display it again.
+You may alternatively set `EMPTYARR_API_TOKEN` as an environment override.
 
 ---
 

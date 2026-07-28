@@ -69,8 +69,11 @@ class AppConfig:
     config_missing: bool = False    # True when no config.yml — UI shows setup prompt
     auth_username: str = ""
     auth_password_hash: str = ""    # bcrypt (or legacy SHA-256) hash, set via Settings UI
+    auth_api_token_hash: str = ""   # SHA-256 of a random, independently rotatable API token
     providers: dict = field(default_factory=dict)  # {realdebrid: {api_key: ...}, ...}
     clean_bundles_before_empty: bool = False
+    max_trash_items: int = 1000
+    max_trash_percent: float = 25.0
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -199,9 +202,12 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
     auth_raw = raw.get("auth", {})
     auth_username      = auth_raw.get("username", "")
     auth_password_hash = auth_raw.get("password_hash", "")
+    auth_api_token_hash = auth_raw.get("api_token_hash", "")
 
     providers_raw = raw.get("providers", {})
     clean_bundles_before_empty = bool(raw.get("clean_bundles_before_empty", False))
+    max_trash_items = int(raw.get("max_trash_items", 1000))
+    max_trash_percent = float(raw.get("max_trash_percent", 25))
 
     instances = [_load_instance(inst) for inst in raw.get("plex_instances", [])]
 
@@ -216,8 +222,11 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
         config_missing      = False,
         auth_username       = auth_username,
         auth_password_hash  = auth_password_hash,
+        auth_api_token_hash = auth_api_token_hash,
         providers           = providers_raw,
         clean_bundles_before_empty = clean_bundles_before_empty,
+        max_trash_items      = max_trash_items,
+        max_trash_percent    = max_trash_percent,
     )
 
 

@@ -11,10 +11,11 @@ import requests
 
 from src.plex_client import PlexClient
 from src.storage import atomic_write_json
+from src.version import __version__
 
 
 PLEX_PRODUCT = "emptyarr"
-PLEX_VERSION = "1.1.0"
+PLEX_VERSION = __version__
 PLEX_PLATFORM = "Web"
 _PIN_TTL_SECONDS = 15 * 60
 _sessions: Dict[str, dict] = {}
