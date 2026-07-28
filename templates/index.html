@@ -15,26 +15,36 @@
 <link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>
 :root {
-  --bg:        #080d14;
-  --bg2:       #0d141e;
-  --surface:   #121b27;
-  --surface2:  #192536;
-  --border:    #223044;
-  --border2:   #31435b;
-  --text:      #cfdae8;
-  --text2:     #9aabc0;
-  --bright:    #f1f5f9;
-  --muted:     #687a91;
-  --accent:    #17bebb;
-  --accent2:   #58ded5;
-  --pass:      #10b981;
-  --pass2:     #34d399;
-  --fail:      #ef4444;
-  --fail2:     #f87171;
-  --warn:      #f59e0b;
-  --warn2:     #fbbf24;
-  --info:      #3b82f6;
-  --info2:     #60a5fa;
+  --bg:        #0d1012;
+  --bg2:       #111619;
+  --surface:   #171d20;
+  --surface2:  #1e2629;
+  --border:    #293235;
+  --border2:   #3a4649;
+  --text:      #c8cfcc;
+  --text2:     #9da8a4;
+  --bright:    #edf0ed;
+  --muted:     #71807b;
+  --accent:    #679b94;
+  --accent2:   #83b0a9;
+  --pass:      #6fa88c;
+  --pass2:     #82b99c;
+  --fail:      #b86f6a;
+  --fail2:     #cf8580;
+  --warn:      #b69562;
+  --warn2:     #c8aa79;
+  --info:      #738da6;
+  --info2:     #8fa5ba;
+  --accent-soft: rgba(103,155,148,.13);
+  --accent-faint:rgba(103,155,148,.06);
+  --accent-line: rgba(131,176,169,.28);
+  --pass-soft:  rgba(111,168,140,.11);
+  --pass-line:  rgba(111,168,140,.27);
+  --fail-soft:  rgba(184,111,106,.10);
+  --fail-line:  rgba(184,111,106,.27);
+  --warn-soft:  rgba(182,149,98,.10);
+  --warn-line:  rgba(182,149,98,.27);
+  --info-soft:  rgba(115,141,166,.10);
   --sans:      Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono:      "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   --nav-h:     68px;
@@ -43,26 +53,36 @@
 
 /* ── Light theme ── */
 [data-theme="light"] {
-  --bg:        #f8fafc;
-  --bg2:       #f1f5f9;
-  --surface:   #ffffff;
-  --surface2:  #f8fafc;
-  --border:    #e2e8f0;
-  --border2:   #cbd5e1;
-  --text:      #475569;
-  --text2:     #64748b;
-  --bright:    #0f172a;
-  --muted:     #94a3b8;
-  --accent:    #089f9b;
-  --accent2:   #087f7c;
-  --pass:      #059669;
-  --pass2:     #10b981;
-  --fail:      #dc2626;
-  --fail2:     #ef4444;
-  --warn:      #d97706;
-  --warn2:     #f59e0b;
-  --info:      #2563eb;
-  --info2:     #3b82f6;
+  --bg:        #e8e1d7;
+  --bg2:       #ddd4c7;
+  --surface:   #f3eee6;
+  --surface2:  #e7dfd4;
+  --border:    #cec2b3;
+  --border2:   #b8aa99;
+  --text:      #574f47;
+  --text2:     #71675e;
+  --bright:    #302a25;
+  --muted:     #918477;
+  --accent:    #6f817a;
+  --accent2:   #596d66;
+  --pass:      #66806e;
+  --pass2:     #788f7e;
+  --fail:      #a3635d;
+  --fail2:     #965751;
+  --warn:      #9a794d;
+  --warn2:     #88683f;
+  --info:      #6c7e8d;
+  --info2:     #596d7c;
+  --accent-soft: rgba(111,129,122,.12);
+  --accent-faint:rgba(111,129,122,.06);
+  --accent-line: rgba(89,109,102,.28);
+  --pass-soft:  rgba(102,128,110,.10);
+  --pass-line:  rgba(102,128,110,.25);
+  --fail-soft:  rgba(163,99,93,.09);
+  --fail-line:  rgba(163,99,93,.24);
+  --warn-soft:  rgba(154,121,77,.09);
+  --warn-line:  rgba(154,121,77,.24);
+  --info-soft:  rgba(108,126,141,.09);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
@@ -128,13 +148,13 @@ nav{
 .btn-secondary{background:var(--surface2);color:var(--bright);border:1px solid var(--border2);}
 .btn-secondary:not(:disabled):hover{background:var(--border2);border-color:var(--border2);}
 .btn-ghost{background:transparent;color:var(--info2);border:1px solid var(--border2);}
-.btn-ghost:not(:disabled):hover{border-color:var(--info2);background:rgba(59,130,246,.08);}
+.btn-ghost:not(:disabled):hover{border-color:var(--info2);background:var(--info-soft);}
 .btn-success{background:var(--pass);color:#fff;}
 .btn-success:not(:disabled):hover{background:var(--pass2);color:#000;}
-.btn-danger{background:transparent;color:var(--fail2);border:1px solid rgba(239,68,68,.3);}
-.btn-danger:not(:disabled):hover{background:rgba(239,68,68,.08);}
-.btn-warn{background:transparent;color:var(--warn2);border:1px solid rgba(245,158,11,.3);}
-.btn-warn:not(:disabled):hover{background:rgba(245,158,11,.08);}
+.btn-danger{background:transparent;color:var(--fail2);border:1px solid var(--fail-line);}
+.btn-danger:not(:disabled):hover{background:var(--fail-soft);}
+.btn-warn{background:transparent;color:var(--warn2);border:1px solid var(--warn-line);}
+.btn-warn:not(:disabled):hover{background:var(--warn-soft);}
 .btn-sm{padding:7px 12px;font-size:12px;}
 .btn-xs{padding:4px 9px;font-size:11px;}
 .btn-icon{padding:8px;border-radius:7px;}
@@ -156,15 +176,72 @@ nav{
 .dashboard-subtitle{color:var(--text2);font-size:14px;}
 .dashboard-subtitle strong{color:var(--bright);font-weight:700;}
 .dashboard-intro-actions{display:flex;gap:10px;flex-shrink:0;}
-.overview-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(360px,.75fr);gap:16px;margin-bottom:34px;}
-.protection-overview,.recent-overview{
-  position:relative;
+.dashboard-view-switcher{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin:-6px 0 24px;
+}
+.server-tabs{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-width:0;
+  overflow-x:auto;
+  scrollbar-width:thin;
+  padding:2px;
+}
+.server-tab{
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text2);
+  border-radius:9px;
+  padding:9px 14px;
+  font-size:12px;
+  font-weight:650;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s;
+}
+.server-tab:hover{color:var(--bright);border-color:var(--border2);}
+.server-tab.active{
+  color:var(--bright);
+  border-color:var(--accent-line);
+  background:linear-gradient(135deg,var(--accent-soft),var(--accent-faint));
+  box-shadow:inset 0 -2px 0 var(--accent);
+}
+.server-select{
+  display:none;
+  width:100%;
+  padding:10px 12px;
+  border:1px solid var(--border2);
+  border-radius:9px;
+  background:var(--surface);
+  color:var(--bright);
+  font:inherit;
+}
+.dashboard-view-panel{display:none;}
+.dashboard-view-panel.active{display:block;}
+.overview-grid{
   overflow:hidden;
   background:linear-gradient(145deg,var(--surface),var(--bg2));
   border:1px solid var(--border);
   border-radius:16px;
+  margin-bottom:34px;
 }
-.protection-overview{padding:25px 26px;}
+.protection-overview,.recent-overview{
+  position:relative;
+  background:transparent;
+}
+.protection-overview{
+  display:grid;
+  grid-template-columns:minmax(0,1.1fr) minmax(420px,.9fr);
+  align-items:center;
+  gap:36px;
+  padding:22px 24px;
+  border-bottom:1px solid var(--border);
+}
 .protection-overview::after{
   content:"";
   position:absolute;
@@ -173,29 +250,30 @@ nav{
   right:-150px;
   top:-210px;
   border-radius:50%;
-  background:radial-gradient(circle,rgba(23,190,187,.18),transparent 68%);
+  background:radial-gradient(circle,var(--accent-soft),transparent 68%);
   pointer-events:none;
 }
+.protection-summary,.protection-meter{position:relative;z-index:1;min-width:0;}
 .overview-label{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);}
-.protection-main{display:flex;align-items:center;gap:22px;margin:20px 0 22px;}
+.protection-main{display:flex;align-items:center;gap:18px;margin-top:13px;}
 .protection-mark{
-  width:88px;
-  height:88px;
-  border-radius:22px;
+  width:72px;
+  height:72px;
+  border-radius:18px;
   display:grid;
   place-items:center;
-  background:linear-gradient(145deg,rgba(23,190,187,.16),rgba(23,190,187,.04));
-  border:1px solid rgba(88,222,213,.22);
-  box-shadow:inset 0 0 30px rgba(23,190,187,.06);
+  background:linear-gradient(145deg,var(--accent-soft),var(--accent-faint));
+  border:1px solid var(--accent-line);
+  box-shadow:inset 0 0 30px var(--accent-faint);
   flex-shrink:0;
 }
-.protection-mark img{width:70px;height:70px;object-fit:contain;}
-.protection-title{font-size:clamp(24px,1.7vw,34px);line-height:1.12;color:var(--bright);letter-spacing:-.7px;margin-bottom:6px;}
+.protection-mark img{width:58px;height:58px;object-fit:contain;}
+.protection-title{font-size:clamp(21px,1.45vw,29px);line-height:1.12;color:var(--bright);letter-spacing:-.6px;margin-bottom:6px;}
 .protection-copy{font-size:13px;color:var(--text2);}
 .protection-bar{height:10px;display:flex;overflow:hidden;border-radius:20px;background:var(--border);margin-bottom:15px;}
 .protection-segment{height:100%;min-width:0;transition:width .35s ease;}
-.protection-segment.ready{background:linear-gradient(90deg,#10b981,#35d399);}
-.protection-segment.attention{background:linear-gradient(90deg,#f59e0b,#f87171);}
+.protection-segment.ready{background:var(--pass);}
+.protection-segment.attention{background:var(--warn);}
 .protection-segment.pending{background:var(--border2);}
 .protection-legend{display:flex;align-items:center;gap:24px;flex-wrap:wrap;}
 .legend-item{display:flex;align-items:center;gap:8px;color:var(--text2);font-size:12px;}
@@ -203,17 +281,17 @@ nav{
 .legend-dot.ready{background:var(--pass);}
 .legend-dot.attention{background:var(--warn);}
 .legend-value{font-family:var(--mono);font-weight:700;color:var(--bright);}
-.recent-overview{padding:22px 22px 15px;}
+.recent-overview{padding:20px 24px 14px;}
 .recent-overview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .text-link{border:0;background:none;color:var(--accent2);font:inherit;font-size:12px;cursor:pointer;}
 .activity-list{display:flex;flex-direction:column;}
 .activity-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border);}
 .activity-status{width:9px;height:9px;border-radius:50%;background:var(--muted);}
-.activity-status.success{background:var(--pass);box-shadow:0 0 8px rgba(16,185,129,.35);}
+.activity-status.success{background:var(--pass);}
 .activity-status.error{background:var(--fail);}
 .activity-status.skipped{background:var(--warn);}
 .activity-status.dry_run{background:var(--info);}
-.activity-name{color:var(--bright);font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.activity-name{color:var(--bright);font-size:13px;font-weight:650;line-height:1.35;overflow-wrap:anywhere;}
 .activity-instance{color:var(--muted);font-size:11px;margin-top:1px;}
 .activity-time{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;}
 .instance-section{margin-bottom:34px;}
@@ -242,13 +320,13 @@ nav{
   border:1px solid var(--border2);
   color:var(--text2);
 }
-.plex-status-pill.pass{color:var(--pass);border-color:rgba(16,185,129,.25);background:rgba(16,185,129,.06);}
-.plex-status-pill.fail{color:var(--fail2);border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.06);}
+.plex-status-pill.pass{color:var(--pass);border-color:var(--pass-line);background:var(--pass-soft);}
+.plex-status-pill.fail{color:var(--fail2);border-color:var(--fail-line);background:var(--fail-soft);}
 .sdot{width:6px;height:6px;border-radius:50%;background:var(--muted);}
-.sdot.pass{background:var(--pass);box-shadow:0 0 5px rgba(16,185,129,.5);}
+.sdot.pass{background:var(--pass);}
 .sdot.fail{background:var(--fail);}
 
-.lib-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:15px;}
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:15px;}
 .lib-card{
   background:linear-gradient(160deg,var(--surface),var(--bg2));
   border:1px solid var(--border);
@@ -266,7 +344,7 @@ nav{
 
 .lib-card-top{padding:16px 17px 13px;display:flex;align-items:center;justify-content:space-between;}
 .lib-identity{display:flex;align-items:center;gap:11px;}
-.library-glyph{width:35px;height:35px;border-radius:10px;display:grid;place-items:center;background:rgba(23,190,187,.1);color:var(--accent2);font-size:17px;border:1px solid rgba(88,222,213,.14);}
+.library-glyph{width:35px;height:35px;border-radius:10px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent2);font-size:17px;border:1px solid var(--accent-line);}
 .lib-card-name{font-size:16px;font-weight:700;color:var(--bright);}
 .type-chip{
   font-family:var(--mono);
@@ -278,7 +356,7 @@ nav{
   border-radius:4px;
   border:1px solid currentColor;
 }
-.type-chip.physical{color:#86efac;opacity:.8;}
+.type-chip.physical{color:var(--pass2);}
 .type-chip.debrid  {color:var(--accent2);}
 .type-chip.usenet  {color:var(--info2);}
 .type-chip.mixed   {color:var(--warn2);}
@@ -286,7 +364,7 @@ nav{
 .lib-state-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 17px;border-top:1px solid var(--border);}
 .lib-state{display:flex;align-items:center;gap:9px;}
 .lib-state-dot{width:9px;height:9px;border-radius:50%;background:var(--muted);}
-.lib-state-dot.pass{background:var(--pass);box-shadow:0 0 8px rgba(16,185,129,.4);}
+.lib-state-dot.pass{background:var(--pass);}
 .lib-state-dot.fail{background:var(--fail);}
 .lib-state-dot.warn{background:var(--warn);}
 .lib-state-dot.info{background:var(--info);}
@@ -347,13 +425,13 @@ table.htable{width:100%;border-collapse:collapse;}
 .htable tr.data-row:hover td{background:rgba(255,255,255,.02);}
 
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
-.badge.success{background:rgba(16,185,129,.12);color:var(--pass);}
-.badge.skipped{background:rgba(245,158,11,.12);color:var(--warn2);}
-.badge.error  {background:rgba(239,68,68,.12);color:var(--fail2);}
-.badge.dry_run{background:rgba(59,130,246,.12);color:var(--info2);}
+.badge.success{background:var(--pass-soft);color:var(--pass);}
+.badge.skipped{background:var(--warn-soft);color:var(--warn2);}
+.badge.error  {background:var(--fail-soft);color:var(--fail2);}
+.badge.dry_run{background:var(--info-soft);color:var(--info2);}
 
 .inst-chip{font-family:var(--mono);font-size:10px;color:var(--text2);background:var(--surface2);border-radius:4px;padding:2px 6px;}
-.lib-chip {font-family:var(--mono);font-size:10px;color:var(--accent2);background:rgba(99,102,241,.1);border-radius:4px;padding:2px 6px;}
+.lib-chip {font-family:var(--mono);font-size:10px;color:var(--accent2);background:var(--accent-soft);border-radius:4px;padding:2px 6px;}
 .check-dots{display:flex;gap:3px;flex-wrap:wrap;}
 .cdot{width:7px;height:7px;border-radius:50%;}
 .cdot.pass{background:var(--pass);}
@@ -600,7 +678,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
   .page{padding-top:42px;}
 }
 @media(max-width:1100px){
-  .overview-grid{grid-template-columns:1fr;}
+  .protection-overview{grid-template-columns:1fr;gap:20px;}
 }
 @media(max-width:768px){
   nav{padding:0 14px;}
@@ -611,6 +689,9 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
   .sched-label,.nav-right .btn-warn{display:none;}
   .page,.app-footer{width:calc(100% - 28px);}
   .dashboard-intro{align-items:flex-start;flex-direction:column;}
+  .server-tabs{display:none;}
+  .server-select{display:block;}
+  .dashboard-view-switcher{display:block;margin-top:-8px;}
   .protection-main{align-items:flex-start;flex-direction:column;}
   .lib-grid{grid-template-columns:1fr;}
   .form-row,.form-row-3{grid-template-columns:1fr;}
@@ -677,25 +758,48 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
       <button class="btn btn-primary" onclick="showPage('settings',document.getElementById('nav-settings'))">Manage libraries</button>
     </div>
   </div>
+  <div class="dashboard-view-switcher">
+    <div class="server-tabs" role="tablist" aria-label="Dashboard view">
+      <button class="server-tab active" type="button" role="tab" aria-selected="true"
+              data-dashboard-view="overview" onclick="selectDashboardView('overview')">Overview</button>
+      {% for inst in instances %}
+      <button class="server-tab" type="button" role="tab" aria-selected="false"
+              data-dashboard-view="server-{{ loop.index0 }}"
+              onclick="selectDashboardView('server-{{ loop.index0 }}')">{{ inst.name }}</button>
+      {% endfor %}
+    </div>
+    <select class="server-select" id="dashboard-server-select"
+            onchange="selectDashboardView(this.value)" aria-label="Dashboard view">
+      <option value="overview">Overview</option>
+      {% for inst in instances %}
+      <option value="server-{{ loop.index0 }}">{{ inst.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="dashboard-view-panel active" id="dashboard-panel-overview">
   <div class="overview-grid">
     <section class="protection-overview">
-      <div class="overview-label">Protection status</div>
-      <div class="protection-main">
-        <div class="protection-mark"><img src="/static/icon.png" alt=""></div>
-        <div>
-          <h2 class="protection-title" id="protection-title">Checking your libraries…</h2>
-          <div class="protection-copy" id="protection-copy">Loading the latest health and run state.</div>
+      <div class="protection-summary">
+        <div class="overview-label">Protection status</div>
+        <div class="protection-main">
+          <div class="protection-mark"><img src="/static/icon.png" alt=""></div>
+          <div>
+            <h2 class="protection-title" id="protection-title">Checking your libraries…</h2>
+            <div class="protection-copy" id="protection-copy">Loading the latest health and run state.</div>
+          </div>
         </div>
       </div>
-      <div class="protection-bar" aria-hidden="true">
-        <span class="protection-segment ready" id="protection-ready-bar" style="width:0"></span>
-        <span class="protection-segment attention" id="protection-attention-bar" style="width:0"></span>
-        <span class="protection-segment pending" id="protection-pending-bar" style="width:100%"></span>
-      </div>
-      <div class="protection-legend">
-        <div class="legend-item"><span class="legend-dot ready"></span><span class="legend-value" id="protection-ready">0</span> healthy</div>
-        <div class="legend-item"><span class="legend-dot attention"></span><span class="legend-value" id="protection-attention">0</span> need attention</div>
-        <div class="legend-item"><span class="legend-dot"></span><span class="legend-value" id="protection-pending">{{ library_count }}</span> awaiting a run</div>
+      <div class="protection-meter">
+        <div class="protection-bar" aria-hidden="true">
+          <span class="protection-segment ready" id="protection-ready-bar" style="width:0"></span>
+          <span class="protection-segment attention" id="protection-attention-bar" style="width:0"></span>
+          <span class="protection-segment pending" id="protection-pending-bar" style="width:100%"></span>
+        </div>
+        <div class="protection-legend">
+          <div class="legend-item"><span class="legend-dot ready"></span><span class="legend-value" id="protection-ready">0</span> healthy</div>
+          <div class="legend-item"><span class="legend-dot attention"></span><span class="legend-value" id="protection-attention">0</span> need attention</div>
+          <div class="legend-item"><span class="legend-dot"></span><span class="legend-value" id="protection-pending">{{ library_count }}</span> awaiting a run</div>
+        </div>
       </div>
     </section>
     <section class="recent-overview">
@@ -707,6 +811,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
         <div class="empty-msg" style="padding:28px 0;">No runs recorded yet</div>
       </div>
     </section>
+  </div>
   </div>
   {% endif %}
   {% if config_error %}
@@ -723,6 +828,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
   </div>
   {% else %}
   {% for inst in instances %}
+  <div class="dashboard-view-panel" id="dashboard-panel-server-{{ loop.index0 }}">
   <div class="instance-section">
     <div class="instance-header-row">
       <div>
@@ -778,6 +884,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0;}
       </div>
       {% endfor %}
     </div>
+  </div>
   </div>
   {% endfor %}
   {% endif %}
@@ -1247,6 +1354,25 @@ function fmtAgo(iso) {
 }
 function cid(i, l) { return i.replace(/ /g,'_') + '_' + l.replace(/ /g,'_'); }
 function statusCls(s) { return {success:'pass',skipped:'warn',error:'fail',dry_run:'info'}[s] || ''; }
+
+// ── Dashboard views ───────────────────────────────────────────────────────────
+function selectDashboardView(requestedView, updateLocation = true) {
+  const requestedPanel = document.getElementById(`dashboard-panel-${requestedView}`);
+  const view = requestedPanel ? requestedView : 'overview';
+  document.querySelectorAll('.dashboard-view-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === `dashboard-panel-${view}`);
+  });
+  document.querySelectorAll('.server-tab[data-dashboard-view]').forEach(tab => {
+    const active = tab.dataset.dashboardView === view;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  const select = document.getElementById('dashboard-server-select');
+  if (select) select.value = view;
+  if (updateLocation && window.location.hash !== `#${view}`) {
+    history.replaceState(null, '', `#${view}`);
+  }
+}
 
 // ── Scheduling ────────────────────────────────────────────────────────────────
 function applyScheduling(enabled) {
@@ -2487,6 +2613,7 @@ function toggleTheme() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 if (!_configMissing) {
+  selectDashboardView(window.location.hash.slice(1) || 'overview', false);
   setInterval(fetchStatus, 15000);
   setInterval(fetchHistory, 30000);
   fetchStatus();
