@@ -1,0 +1,242 @@
+import json
+import sqlite3
+import unittest
+from contextlib import closing
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+import app
+from src.config import (AppConfig, LibraryConfig, PathConfig,
+                        PlexInstanceConfig, TimestampRepairConfig, parse_config)
+from src.timestamp_repair import (AffectedPart, TimestampRepairManager,
+                                  _inside, temporary_name)
+from src import runner
+
+
+class TimestampRepairDetectionTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(__file__).parent / ".runtime-timestamp-detection"
+        self.root.mkdir(exist_ok=True)
+        self.database = self.root / "plex.db"
+        self.database.unlink(missing_ok=True)
+        with closing(sqlite3.connect(self.database)) as connection:
+            connection.executescript("""
+                CREATE TABLE metadata_items (
+                    id INTEGER PRIMARY KEY, library_section_id INTEGER,
+                    parent_id INTEGER, title TEXT
+                );
+                CREATE TABLE media_items (
+                    id INTEGER PRIMARY KEY, metadata_item_id INTEGER
+                );
+                CREATE TABLE media_parts (
+                    id INTEGER PRIMARY KEY, media_item_id INTEGER,
+                    file TEXT, updated_at INTEGER, deleted_at INTEGER
+                );
+                INSERT INTO metadata_items VALUES (10, 2, NULL, 'Movie');
+                INSERT INTO media_items VALUES (20, 10);
+                INSERT INTO media_parts VALUES (30, 20, '/links/provider/Movie/Movie.mkv', -5, NULL);
+                INSERT INTO media_parts VALUES (31, 20, '/links/provider/Movie/Movie.mkv', -6, NULL);
+                INSERT INTO media_parts VALUES (32, 20, '/links/other/Other.mkv', -7, NULL);
+                INSERT INTO media_parts VALUES (33, 20, '/links/provider/Good.mkv', 8, NULL);
+            """)
+            connection.commit()
+        self.manager = TimestampRepairManager(str(self.root / "data"), sleep=lambda _: None)
+        self.config = TimestampRepairConfig(
+            enabled=True, database_path=str(self.database),
+            allowed_prefixes=["/links/provider"],
+        )
+
+    def tearDown(self):
+        self.database.unlink(missing_ok=True)
+
+    def test_read_only_detector_is_generic_and_deduplicates_files(self):
+        parts = self.manager.detect(self.config, "2")
+        self.assertEqual(len(parts), 1)
+        self.assertEqual(parts[0].file_path, "/links/provider/Movie/Movie.mkv")
+        self.assertEqual(parts[0].folder, "/links/provider/Movie")
+
+    def test_prefix_containment_rejects_sibling_prefix_attack(self):
+        self.assertTrue(_inside("/links/provider/Movie/file.mkv", "/links/provider"))
+        self.assertFalse(_inside("/links/provider-evil/file.mkv", "/links/provider"))
+
+    def test_temporary_names_preserve_final_extension(self):
+        self.assertEqual(temporary_name("/media/A.B.mkv"), "/media/A.B.plexfix.mkv")
+        self.assertEqual(temporary_name("/media/README"), "/media/README.plexfix")
+
+
+class TimestampRepairTransactionTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(__file__).parent / ".runtime-timestamp-transactions"
+        self.root.mkdir(exist_ok=True)
+        repair_root = self.root / "timestamp-repair"
+        for name in ("active.json", "audit.json", "history.json"):
+            (repair_root / name).unlink(missing_ok=True)
+        self.manager = TimestampRepairManager(str(self.root), sleep=lambda _: None)
+        self.repair = TimestampRepairConfig(
+            enabled=True, database_path="/plex-db/library.db",
+            allowed_prefixes=["/links"], max_files_per_folder=5,
+            scan_timeout_seconds=30, poll_interval_seconds=1,
+            heartbeat_seconds=1,
+        )
+        self.library = LibraryConfig(
+            "Movies", "debrid", [PathConfig("/links", "debrid")],
+            section_id="2",
+        )
+        self.instance = PlexInstanceConfig(
+            "Plex", "http://plex", "token", [self.library],
+            timestamp_repair=self.repair,
+        )
+
+    def tearDown(self):
+        repair_root = self.root / "timestamp-repair"
+        for name in ("active.json", "audit.json", "history.json"):
+            (repair_root / name).unlink(missing_ok=True)
+
+    def test_manifest_is_persisted_before_first_rename(self):
+        part = AffectedPart("2", 10, 20, 30, "/links/Movie/file.mkv", -5,
+                            "/links/Movie", "Movie")
+        plex = Mock()
+        plex.scan_path.return_value = {"ok": True, "http": 200}
+        rename = {
+            "original": part.file_path,
+            "temporary": "/links/Movie/file.plexfix.mkv",
+            "target": "/targets/file.mkv",
+            "resolved_target": "/targets/file.mkv",
+            "mtime": 100,
+        }
+        with patch.object(self.manager, "detect", return_value=[part]), \
+             patch.object(self.manager, "_validate_file", return_value=rename), \
+             patch.object(self.manager, "_file_states",
+                          side_effect=[{part.file_path: []}, {part.file_path: [100]}]), \
+             patch.object(self.manager, "_restore", return_value=True), \
+             patch("src.timestamp_repair._rename_symlink") as replace:
+            def manifest_exists(*_):
+                self.assertTrue(self.manager.active_path.exists())
+            replace.side_effect = manifest_exists
+            result = self.manager.run_folder(
+                self.instance, self.library, self.repair, plex, part.folder,
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(plex.scan_path.call_count, 2)
+        self.assertFalse(self.manager.active_path.exists())
+        history = json.loads(self.manager.history_path.read_text(encoding="utf-8"))
+        self.assertEqual(history[0]["state"], "completed")
+
+    def test_ambiguous_recovery_keeps_manifest_for_operator(self):
+        transaction = {
+            "transaction_id": "tx", "instance": "Plex", "library": "Movies",
+            "state": "renamed", "renames": [{
+                "original": "/links/a.mkv", "temporary": "/links/a.plexfix.mkv",
+                "target": "/target/a.mkv",
+            }],
+        }
+        self.manager._write_active(transaction)
+        with patch("src.timestamp_repair.os.path.lexists", return_value=True):
+            result = self.manager.recover()
+        self.assertFalse(result["ok"])
+        self.assertEqual(self.manager.active_transaction()["state"], "recovery_required")
+
+    def test_changed_files_after_audit_require_fresh_review(self):
+        part = AffectedPart("2", 10, 20, 30, "/links/Movie/new.mkv", -5,
+                            "/links/Movie", "Movie")
+        plex = Mock()
+        with patch.object(self.manager, "detect", return_value=[part]), \
+             patch.object(self.manager, "_validate_file") as validate:
+            result = self.manager.run_folder(
+                self.instance, self.library, self.repair, plex, part.folder,
+                expected_files={"/links/Movie/reviewed.mkv"},
+            )
+        self.assertFalse(result["ok"])
+        self.assertIn("fresh audit", result["error"])
+        validate.assert_not_called()
+        plex.scan_path.assert_not_called()
+
+    def test_scan_timeout_restores_names_and_requests_reconciliation_scan(self):
+        part = AffectedPart("2", 10, 20, 30, "/links/Movie/file.mkv", -5,
+                            "/links/Movie", "Movie")
+        plex = Mock()
+        plex.scan_path.return_value = {"ok": True, "http": 200}
+        rename = {
+            "original": part.file_path,
+            "temporary": "/links/Movie/file.plexfix.mkv",
+            "target": "/targets/file.mkv", "resolved_target": "/targets/file.mkv",
+            "mtime": 100,
+        }
+        def restored(transaction):
+            transaction["state"] = "restored"
+            return True
+        with patch.object(self.manager, "detect", return_value=[part]), \
+             patch.object(self.manager, "_validate_file", return_value=rename), \
+             patch.object(self.manager, "_wait_for", return_value=False), \
+             patch.object(self.manager, "_restore", side_effect=restored), \
+             patch("src.timestamp_repair._rename_symlink"):
+            result = self.manager.run_folder(
+                self.instance, self.library, self.repair, plex, part.folder,
+            )
+        self.assertFalse(result["ok"])
+        self.assertIn("timed out", result["error"])
+        self.assertEqual(plex.scan_path.call_count, 2)
+        self.assertFalse(self.manager.active_path.exists())
+
+    def test_corrupt_active_manifest_blocks_automatic_recovery(self):
+        self.manager.active_path.parent.mkdir(parents=True, exist_ok=True)
+        self.manager.active_path.write_text("not-json", encoding="utf-8")
+        self.assertTrue(self.manager.has_active_transaction("Plex"))
+        result = self.manager.recover()
+        self.assertFalse(result["ok"])
+        self.assertTrue(self.manager.active_path.exists())
+
+    def test_active_transaction_blocks_empty_trash_before_health_checks(self):
+        transaction = {
+            "transaction_id": "tx", "instance": "Plex", "library": "Movies",
+            "state": "renamed", "renames": [],
+        }
+        self.manager._write_active(transaction)
+        plex = Mock()
+        config = AppConfig(instances=[self.instance])
+
+        runner.run_library(self.instance, self.library, config, plex, manual=True)
+
+        plex.check_reachable.assert_not_called()
+        plex.empty_trash.assert_not_called()
+
+
+class TimestampRepairConfigTests(unittest.TestCase):
+    def test_feature_is_disabled_by_default(self):
+        parsed = parse_config({"plex_instances": [{
+            "name": "Plex", "url": "http://plex", "libraries": [],
+        }]})
+        self.assertFalse(parsed.instances[0].timestamp_repair.enabled)
+
+    def test_enabled_feature_requires_database_and_allowlist(self):
+        raw = {"plex_instances": [{
+            "name": "Plex", "url": "http://plex", "libraries": [],
+            "timestamp_repair": {"enabled": True},
+        }]}
+        with self.assertRaisesRegex(ValueError, "database path and allowed"):
+            app._validate_raw_config(raw)
+
+
+class TimestampRepairApiTests(unittest.TestCase):
+    def test_run_rejects_folder_not_returned_by_latest_audit(self):
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_csrf_token"] = "known-token"
+        instance = PlexInstanceConfig("Plex", "http://plex", "token", [])
+        with patch.object(app, "_timestamp_runtime",
+                          return_value=(instance, Mock(), Mock())), \
+             patch.object(app.timestamp_repair, "audited_folder",
+                          return_value=False):
+            response = client.post(
+                "/api/timestamp-repair/run",
+                json={"instance": "Plex", "library_section_id": "2",
+                      "folder": "/arbitrary/path"},
+                headers={"X-CSRF-Token": "known-token"},
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("latest server-side audit", response.get_json()["error"])
+
+
+if __name__ == "__main__":
+    unittest.main()

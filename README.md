@@ -169,6 +169,51 @@ clock time matching the effective schedule, and the dashboard shows that
 countdown as soon as the scheduler starts. **Run now** remains available when
 an immediate safety run is wanted.
 
+### Manual Plex part timestamp repair
+
+Emptyarr can optionally audit Plex's database for media parts whose stored
+timestamp is negative and repair one explicitly reviewed movie or TV season
+folder at a time. This is backend-neutral: it can protect symlink trees created
+by NZBDAV, Decypharr, AltMount, Ultimate Usenet, or another tool when the
+filesystem exposed an invalid modification time while Plex scanned it.
+
+The feature is disabled by default and is never scheduled. Open **Timestamp
+Repair**, run an audit, inspect the exact affected filenames on a folder card,
+then explicitly approve that folder. Emptyarr durably records the transaction,
+temporarily renames only the affected symlinks, requests two path-limited Plex
+HTTP scans, restores the original names, and verifies positive timestamps.
+Empty Trash and timestamp repair share one maintenance lock.
+
+```yaml
+plex_instances:
+  - name: My Plex
+    url: http://192.168.1.100:32400
+    token: ''
+    timestamp_repair:
+      enabled: false
+      database_path: /plex-db/com.plexapp.plugins.library.db
+      allowed_prefixes:
+        - /mnt/symlink_media/symlinks/nzbdav
+      max_files_per_folder: 5
+      scan_timeout_seconds: 1800
+      poll_interval_seconds: 5
+      heartbeat_seconds: 30
+```
+
+Least-privilege container mounts are required. Retain the broad symlink root as
+read-only, overlay only the repair prefix as read/write, and expose only Plex's
+database directory read-only:
+
+```yaml
+- /mnt/symlink_media:/mnt/symlink_media:ro,slave
+- /mnt/symlink_media/symlinks/nzbdav:/mnt/symlink_media/symlinks/nzbdav:rw,slave
+- /mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/plex-db:ro
+```
+
+The writable path must exactly match the path stored by Plex. Emptyarr never
+writes to Plex's database or symlink targets and does not require Docker-socket
+access. Its PUID/PGID must have rename permission on the allowed symlink tree.
+
 ### Example config
 
 ```yaml

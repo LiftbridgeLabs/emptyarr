@@ -241,6 +241,20 @@ class PlexClient:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def scan_path(self, section_id: str, path: str) -> Dict:
+        """Request Plex's supported path-limited library scan."""
+        try:
+            response = self._get(
+                f"/library/sections/{section_id}/refresh",
+                params={"path": path},
+                timeout=30,
+            )
+            if response.status_code in (200, 201, 202, 204):
+                return {"ok": True, "http": response.status_code}
+            return {"ok": False, "http": response.status_code}
+        except Exception as exc:
+            return {"ok": False, "http": None, "error": type(exc).__name__}
+
     def empty_trash(self, section_id: str) -> Dict:
         try:
             r = self.session.put(

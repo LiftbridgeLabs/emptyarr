@@ -20,6 +20,13 @@ services:
       # created after container start are visible inside the container.
       - /mnt/symlink_media:/mnt/symlink_media:ro,slave
 
+      # Optional manual timestamp repair. The writable container path must
+      # exactly match the path Plex stores in its database. Keep this narrow.
+      # - /mnt/symlink_media/symlinks/nzbdav:/mnt/symlink_media/symlinks/nzbdav:rw,slave
+
+      # Optional read-only Plex SQLite detector. Map only the database folder.
+      # - /mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/plex-db:ro
+
       # Physical media:
       - /mnt/user/media:/mnt/user/media:ro
 

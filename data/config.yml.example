@@ -69,6 +69,18 @@ plex_instances:
   - name: My Plex
     url: http://192.168.1.100:32400
     token: ""  # set via PLEX_TOKEN_MY_PLEX env var, or paste in Settings UI
+    # Optional, manual-only repair for Plex parts with negative timestamps.
+    # The database directory must be mounted read-only. Each allowed prefix
+    # must be a narrow library-facing symlink tree mounted read/write.
+    timestamp_repair:
+      enabled: false
+      database_path: /plex-db/com.plexapp.plugins.library.db
+      allowed_prefixes:
+        - /mnt/symlink_media/symlinks/repair
+      max_files_per_folder: 5
+      scan_timeout_seconds: 1800
+      poll_interval_seconds: 5
+      heartbeat_seconds: 30
     libraries:
       - name: Movies
         type: physical

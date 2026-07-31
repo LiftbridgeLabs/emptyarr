@@ -67,6 +67,12 @@
           Required="false"
           Mask="false">/mnt/user/media</Config>
 
+  <!-- Timestamp Repair is manual-only and disabled by default. When enabled,
+       add a narrow read/write Path mapping whose container path exactly matches
+       Plex's stored symlink prefix, plus a read-only mapping of only Plex's
+       Plug-in Support/Databases directory to /plex-db. Broad media roots and
+       Plex appdata must remain read-only. -->
+
   <!-- ── Web UI auth ────────────────────────────────────────────────────── -->
   <Config Name="Web UI Username (optional)"
           Target="EMPTYARR_USERNAME"

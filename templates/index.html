@@ -716,6 +716,18 @@ dialog.overlay::backdrop{background:transparent;}
   .app-footer{align-items:flex-start;flex-direction:column;}
   .footer-links{flex-wrap:wrap;}
 }
+.repair-summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:16px;}
+.repair-summary-card,.repair-folder-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:var(--shadow);}
+.repair-summary-card{cursor:pointer;transition:border-color .15s,transform .15s;}
+.repair-summary-card:hover{border-color:var(--accent);transform:translateY(-1px);}
+.repair-count{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--bright);}
+.repair-folder-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:16px;}
+.repair-folder-card{display:flex;flex-direction:column;min-height:220px;}
+.repair-folder-title{font-size:16px;font-weight:700;color:var(--bright);margin-bottom:3px;}
+.repair-files{margin:12px 0;max-height:150px;overflow:auto;border-top:1px solid var(--border);}
+.repair-file{padding:8px 0;border-bottom:1px solid var(--border);font-size:11px;word-break:break-word;}
+.repair-warning{padding:12px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);border-radius:8px;color:var(--warn2);font-size:12px;margin:14px 0;}
+.repair-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
 </style>
 </head>
 <body>
@@ -732,6 +744,9 @@ dialog.overlay::backdrop{background:transparent;}
     </button>
     <button class="nav-link" onclick="showPage('history',this)" id="nav-history">
       History
+    </button>
+    <button class="nav-link" onclick="showPage('timestamp-repair',this)" id="nav-timestamp-repair">
+      Timestamp Repair
     </button>
     <button class="nav-link" onclick="showPage('settings',this)" id="nav-settings">
       Settings
@@ -910,6 +925,39 @@ dialog.overlay::backdrop{background:transparent;}
 </div>
 
 <!-- ── HISTORY PAGE ── -->
+<div class="page" id="page-timestamp-repair">
+  <div id="repair-overview">
+    <div class="repair-toolbar">
+      <div>
+        <div class="eyebrow">Manual Plex maintenance</div>
+        <h1 class="dashboard-title">Part timestamp repair</h1>
+        <div class="dashboard-subtitle">Audit negative Plex timestamps, then repair one reviewed movie or season folder at a time.</div>
+      </div>
+      <button class="btn btn-secondary" onclick="loadRepairStatus()">&#8635; Refresh</button>
+    </div>
+    <div class="repair-warning">Timestamp repair is manual only. Empty Trash is locked out while a repair or recovery transaction is active.</div>
+    <div id="repair-active"></div>
+    <div class="repair-summary-grid" id="repair-summary-grid">
+      <div class="empty-msg">Loading timestamp repair configuration&hellip;</div>
+    </div>
+    <div class="card" style="margin-top:18px;">
+      <div class="card-header"><span class="card-title">Recent repair activity</span></div>
+      <div class="card-body" id="repair-history"><div class="empty-msg">No repair transactions yet</div></div>
+    </div>
+  </div>
+  <div id="repair-detail" style="display:none;">
+    <button class="text-link" onclick="closeRepairLibrary()">&larr; Back to servers</button>
+    <div class="repair-toolbar" style="margin-top:12px;">
+      <div>
+        <div class="eyebrow" id="repair-detail-instance"></div>
+        <h1 class="dashboard-title" id="repair-detail-title">Affected folders</h1>
+        <div class="dashboard-subtitle" id="repair-detail-subtitle"></div>
+      </div>
+    </div>
+    <div class="repair-folder-grid" id="repair-folder-grid"></div>
+  </div>
+</div>
+
 <div class="page" id="page-history">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
     <div class="filters">
@@ -1481,9 +1529,99 @@ function showPage(name, btn) {
   document.getElementById(`page-${name}`).classList.add('active');
   if (btn) btn.classList.add('active');
   if (name === 'history') { fetchHistory(); }
+  if (name === 'timestamp-repair') { loadRepairStatus(); }
   if (name === 'settings') { loadSettings(); }
   if (name !== 'settings') { stopLogViewer(); }
 }
+
+// Timestamp repair
+let _repairStatus = null;
+let _repairPoll = null;
+
+async function loadRepairStatus() {
+  try {
+    const response = await fetch('/api/timestamp-repair/status');
+    _repairStatus = await response.json();
+    renderRepairOverview(_repairStatus);
+    if (_repairStatus.running || _repairStatus.active_transaction) {
+      clearTimeout(_repairPoll);
+      _repairPoll = setTimeout(loadRepairStatus, 5000);
+    }
+  } catch (error) {
+    document.getElementById('repair-summary-grid').innerHTML = '<div class="empty-msg">Could not load timestamp repair status.</div>';
+  }
+}
+
+function renderRepairOverview(status) {
+  const active = status.active_transaction;
+  document.getElementById('repair-active').innerHTML = active ? `
+    <div class="card" style="margin-bottom:14px;border-color:var(--warn);"><div class="card-body">
+      <strong>${h(active.state.replaceAll('_',' '))}</strong> &middot; ${h(active.instance)} / ${h(active.library)}<br>
+      <span style="font-size:11px;color:var(--muted);">${h(active.folder)} &middot; ${Number(active.scan_elapsed_seconds||0)}s elapsed &middot; heartbeat ${h(fmtAgo(active.last_heartbeat))}</span>
+      <div style="margin-top:10px;display:flex;gap:8px;"><button class="btn btn-warn btn-sm" onclick="cancelRepair()">Cancel safely</button>${active.state === 'recovery_required' ? '<button class="btn btn-primary btn-sm" onclick="recoverRepair()">Recover</button>' : ''}</div>
+    </div></div>` : (status.state === 'failed' && status.error ? `<div class="repair-warning" style="border-color:rgba(239,68,68,.4);color:var(--fail2);">Last repair attempt failed: ${h(status.error)}</div>` : '');
+  const audits = status.audits || {};
+  document.getElementById('repair-history').innerHTML = (status.history || []).length ? status.history.map(item => `<div class="repair-file"><span class="badge ${item.state==='completed'?'success':item.state==='failed'?'error':'skipped'}">${h(item.state)}</span> <strong>${h(item.instance)} / ${h(item.library)}</strong><br><span style="color:var(--muted);">${h(item.folder)} &middot; ${h(fmtTime(item.completed_at||item.updated_at))}${item.error?` &middot; ${h(item.error)}`:''}</span></div>`).join('') : '<div class="empty-msg">No repair transactions yet</div>';
+  document.getElementById('repair-summary-grid').innerHTML = (status.instances || []).flatMap(instance => {
+    const audit = audits[instance.name];
+    const groups = {};
+    (audit?.folders || []).forEach(folder => { const key=folder.library_section_id; groups[key] ||= {section:key,library:folder.library,folders:[]}; groups[key].folders.push(folder); });
+    (audit?.libraries || []).forEach(library => { groups[library.library_section_id] ||= {section:library.library_section_id,library:library.library,folders:[]}; });
+    const cards = Object.values(groups);
+    if (!cards.length) cards.push({section:'',library:audit?'All configured libraries':'No audit yet',folders:[]});
+    return cards.map(group => {
+      const count = group.folders.reduce((total,folder)=>total+folder.files.length,0);
+      const folderCount = group.folders.length;
+      return `<div class="repair-summary-card" ${audit ? `data-repair-instance="${h(instance.name)}" data-repair-section="${h(group.section)}" data-repair-library="${h(group.library)}"` : ''}>
+      <div style="display:flex;justify-content:space-between;gap:8px;"><div><div class="repair-folder-title">${h(instance.name)} / ${h(group.library)}</div><div style="font-size:11px;color:var(--muted);">${audit ? `Audited ${h(fmtAgo(audit.audited_at))}` : 'Run the first read-only audit'}</div></div><span class="badge ${instance.enabled?'success':'skipped'}">${instance.enabled?'enabled':'disabled'}</span></div>
+      <div class="repair-count">${count}</div><div style="font-size:11px;color:var(--muted);">affected file${count===1?'':'s'} in ${folderCount} folder${folderCount===1?'':'s'}</div>
+      <div style="margin-top:12px;display:flex;gap:8px;"><button class="btn btn-primary btn-sm" data-audit-instance="${h(instance.name)}" ${instance.enabled&&!status.running?'':'disabled'}>Audit</button>${audit ? '<span class="form-hint" style="margin:auto 0 0;">Open details &rarr;</span>' : ''}</div>
+    </div>`; });
+  }).join('') || '<div class="empty-msg">No Plex instances are configured.</div>';
+  document.querySelectorAll('[data-repair-instance]').forEach(card => card.addEventListener('click', () => openRepairLibrary(card.dataset.repairInstance,card.dataset.repairSection,card.dataset.repairLibrary)));
+  document.querySelectorAll('[data-audit-instance]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); auditRepair(button.dataset.auditInstance); }));
+}
+
+async function auditRepair(instance) {
+  toast(`Auditing ${instance}...`);
+  const response = await fetch('/api/timestamp-repair/audit', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instance})});
+  const data = await response.json();
+  if (!response.ok) return toast(data.error || 'Audit failed', 'fail');
+  toast(`Found ${data.distinct_files} affected file(s)`, data.distinct_files ? 'warn' : 'pass');
+  await loadRepairStatus();
+}
+
+function openRepairLibrary(instance, section, title) {
+  const audit = _repairStatus?.audits?.[instance];
+  if (!audit) return;
+  document.getElementById('repair-overview').style.display = 'none';
+  document.getElementById('repair-detail').style.display = '';
+  document.getElementById('repair-detail-instance').textContent = instance;
+  document.getElementById('repair-detail-title').textContent = title || 'Affected folders';
+  const folders = (audit.folders || []).filter(folder => !section || folder.library_section_id === String(section));
+  const fileCount = folders.reduce((total,folder)=>total+folder.files.length,0);
+  document.getElementById('repair-detail-subtitle').textContent = `${fileCount} affected file(s) across ${folders.length} movie/season folder(s)`;
+  document.getElementById('repair-folder-grid').innerHTML = folders.map(folder => `
+    <div class="repair-folder-card"><div class="repair-folder-title">${h(folder.title)}</div><div style="font-size:11px;color:var(--muted);">${h(folder.subtitle || folder.library)} &middot; ${folder.files.length} affected file${folder.files.length===1?'':'s'}</div>
+      <div class="repair-files">${folder.files.map(file => `<div class="repair-file"><strong>${h(file.item_title || file.file_path.split(/[\\/]/).pop())}</strong><br><span style="color:var(--muted);">${h(file.file_path)}</span></div>`).join('')}</div>
+      <div style="margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span class="badge skipped">manual only</span><button class="btn btn-primary btn-sm" data-repair-payload="${h(encodeURIComponent(JSON.stringify({instance,section:folder.library_section_id,folder:folder.folder,files:folder.files.map(file=>file.file_path)})))}" ${_repairStatus.running?'disabled':''}>Repair this folder</button></div>
+    </div>`).join('') || '<div class="empty-msg">No affected folders remain. Run a fresh audit to confirm.</div>';
+  document.querySelectorAll('[data-repair-payload]').forEach(button => button.addEventListener('click', () => { const payload=JSON.parse(decodeURIComponent(button.dataset.repairPayload)); runRepairFolder(payload.instance,payload.section,payload.folder,payload.files); }));
+}
+
+function closeRepairLibrary() { document.getElementById('repair-detail').style.display='none'; document.getElementById('repair-overview').style.display=''; }
+
+async function runRepairFolder(instance, section, folder, files) {
+  const exact = files.map(path => `  • ${path}`).join('\n');
+  if (!confirm(`Repair this one folder?\n\n${folder}\n\nAffected symlinks (${files.length}):\n${exact}\n\nEmpty Trash will remain locked until restoration and verification complete.`)) return;
+  const response = await fetch('/api/timestamp-repair/run', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instance,library_section_id:section,folder})});
+  const data = await response.json();
+  if (!response.ok) return toast(data.error || 'Repair could not start', 'fail');
+  closeRepairLibrary(); toast('Timestamp repair started','warn'); setTimeout(loadRepairStatus,500);
+}
+
+async function cancelRepair() { await fetch('/api/timestamp-repair/cancel',{method:'POST'}); toast('Safe cancellation requested','warn'); }
+async function recoverRepair() { const response=await fetch('/api/timestamp-repair/recover',{method:'POST'}); const data=await response.json(); toast(data.message||data.error,response.ok?'pass':'fail'); loadRepairStatus(); }
 
 function showSettingsSection(name, btn) {
   document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));

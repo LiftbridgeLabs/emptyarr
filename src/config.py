@@ -36,6 +36,17 @@ class LibraryConfig:
     section_id: Optional[str] = None            # auto-discovered if not set
 
 
+@dataclass
+class TimestampRepairConfig:
+    enabled: bool = False
+    database_path: str = ""
+    allowed_prefixes: List[str] = field(default_factory=list)
+    max_files_per_folder: int = 5
+    scan_timeout_seconds: int = 1800
+    poll_interval_seconds: int = 5
+    heartbeat_seconds: int = 30
+
+
 # ── Plex instance config ──────────────────────────────────────────────────────
 
 @dataclass
@@ -45,6 +56,7 @@ class PlexInstanceConfig:
     token: str
     libraries: List[LibraryConfig]
     machine_id: Optional[str] = None
+    timestamp_repair: TimestampRepairConfig = field(default_factory=TimestampRepairConfig)
 
 
 # ── Notification config ───────────────────────────────────────────────────────
@@ -187,12 +199,28 @@ def _load_instance(raw: dict) -> PlexInstanceConfig:
         f"PLEX_TOKEN_{safe}",
         _env_override("PLEX_TOKEN", raw.get("token", "")),
     )
+    repair_raw = raw.get("timestamp_repair", {})
+    if not isinstance(repair_raw, dict):
+        repair_raw = {}
+    allowed_prefixes = repair_raw.get("allowed_prefixes", [])
+    if not isinstance(allowed_prefixes, list):
+        allowed_prefixes = []
+    repair = TimestampRepairConfig(
+        enabled=bool(repair_raw.get("enabled", False)),
+        database_path=str(repair_raw.get("database_path", "")),
+        allowed_prefixes=[str(path) for path in allowed_prefixes],
+        max_files_per_folder=int(repair_raw.get("max_files_per_folder", 5)),
+        scan_timeout_seconds=int(repair_raw.get("scan_timeout_seconds", 1800)),
+        poll_interval_seconds=int(repair_raw.get("poll_interval_seconds", 5)),
+        heartbeat_seconds=int(repair_raw.get("heartbeat_seconds", 30)),
+    )
     return PlexInstanceConfig(
         name      = raw["name"],
         url       = url,
         token     = token,
         libraries = [_load_library(lib) for lib in raw.get("libraries", [])],
         machine_id = raw.get("machine_id"),
+        timestamp_repair = repair,
     )
 
 

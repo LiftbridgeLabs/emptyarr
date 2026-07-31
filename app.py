@@ -28,6 +28,7 @@ from src.logging_manager import LogManager
 from src import plex_auth
 from src import notifications
 from src.version import __version__
+from src.timestamp_repair import TimestampRepairManager
 
 LOG_DIR  = os.environ.get("LOG_DIR", "data/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -70,6 +71,13 @@ plex_clients: dict[str, PlexClient] = {
     inst.name: PlexClient(inst.url, inst.token)
     for inst in config.instances
 }
+timestamp_repair = TimestampRepairManager(
+    os.path.dirname(os.path.abspath(CONFIG_PATH)),
+)
+startup_recovery = timestamp_repair.recover()
+if not startup_recovery.get("ok"):
+    logger.error("Timestamp repair startup recovery requires attention: %s",
+                 startup_recovery.get("error"))
 
 app = Flask(__name__)
 
@@ -268,6 +276,23 @@ def _validate_instance(instance, names: set, machine_ids: set) -> None:
         raise ValueError(f"Duplicate Plex server identifier: {machine_id}")
     if machine_id:
         machine_ids.add(machine_id)
+    repair = instance.get("timestamp_repair", {})
+    if not isinstance(repair, dict):
+        raise ValueError(f"{name}: timestamp_repair must be an object")
+    enabled = bool(repair.get("enabled", False))
+    database_path = str(repair.get("database_path", "")).strip()
+    prefixes = repair.get("allowed_prefixes", [])
+    if not isinstance(prefixes, list) or any(not str(path).strip() for path in prefixes):
+        raise ValueError(f"{name}: timestamp repair prefixes must be a list of paths")
+    if enabled and (not database_path or not prefixes):
+        raise ValueError(f"{name}: enabled timestamp repair requires a database path and allowed prefixes")
+    if not 1 <= int(repair.get("max_files_per_folder", 5)) <= 100:
+        raise ValueError(f"{name}: timestamp repair file limit must be between 1 and 100")
+    timeout = int(repair.get("scan_timeout_seconds", 1800))
+    poll = int(repair.get("poll_interval_seconds", 5))
+    heartbeat = int(repair.get("heartbeat_seconds", 30))
+    if not 30 <= timeout <= 7200 or not 1 <= poll <= 60 or not poll <= heartbeat <= 300:
+        raise ValueError(f"{name}: invalid timestamp repair polling settings")
     ok, reason = _is_valid_plex_url(str(instance.get("url", "")).strip())
     if not ok:
         raise ValueError(f"{name}: {reason}")
@@ -586,6 +611,102 @@ def api_status():
 @require_auth
 def api_history():
     return jsonify(runner.get_history())
+
+
+def _timestamp_runtime(instance_name: str, section_id: str = ""):
+    with _runtime_lock:
+        instance = next(
+            (item for item in config.instances if item.name == instance_name), None,
+        )
+        plex = plex_clients.get(instance_name)
+        library = None
+        if instance and section_id:
+            for item in instance.libraries:
+                configured_section = item.section_id
+                if not configured_section and plex:
+                    configured_section = plex.find_section_id(item.name)
+                if str(configured_section) == str(section_id):
+                    library = item
+                    break
+    return instance, library, plex
+
+
+@app.route("/api/timestamp-repair/status", methods=["GET"])
+@require_auth
+def api_timestamp_repair_status():
+    status = timestamp_repair.status()
+    status["instances"] = [
+        {
+            "name": instance.name,
+            "enabled": instance.timestamp_repair.enabled,
+            "max_files_per_folder": instance.timestamp_repair.max_files_per_folder,
+        }
+        for instance in config.instances
+    ]
+    return jsonify(status)
+
+
+@app.route("/api/timestamp-repair/audit", methods=["POST"])
+@require_auth
+def api_timestamp_repair_audit():
+    data = request.get_json(silent=True) or {}
+    instance, _, plex = _timestamp_runtime(str(data.get("instance", "")))
+    if not instance:
+        return jsonify({"error": "Plex instance not found"}), 404
+    try:
+        return jsonify(timestamp_repair.audit(
+            instance, instance.timestamp_repair, plex,
+        ))
+    except Exception as exc:
+        logger.error("Timestamp repair audit failed for %s (%s)",
+                     instance.name, type(exc).__name__)
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.route("/api/timestamp-repair/run", methods=["POST"])
+@require_auth
+def api_timestamp_repair_run():
+    data = request.get_json(silent=True) or {}
+    instance_name = str(data.get("instance", ""))
+    section_id = str(data.get("library_section_id", ""))
+    folder = str(data.get("folder", ""))
+    instance, library, plex = _timestamp_runtime(instance_name, section_id)
+    if not instance or not library or not plex:
+        return jsonify({"error": "Configured Plex instance/library not found"}), 404
+    if not timestamp_repair.audited_folder(instance_name, section_id, folder):
+        return jsonify({"error": "Folder is not present in the latest server-side audit"}), 400
+    expected_files = timestamp_repair.audited_files(
+        instance_name, section_id, folder,
+    )
+    repair_status = timestamp_repair.status()
+    if repair_status.get("running") or repair_status.get("active_transaction"):
+        return jsonify({"error": "A timestamp repair is already active"}), 409
+
+    def _run():
+        timestamp_repair.run_folder(
+            instance, library, instance.timestamp_repair, plex, folder, section_id,
+            preflight=lambda: runner._collect_library_checks(
+                instance, library, config, plex, section_id=section_id,
+            )[0],
+            expected_files=expected_files,
+        )
+
+    threading.Thread(target=_run, daemon=True, name="timestamp-repair").start()
+    return jsonify({"status": "triggered"}), 202
+
+
+@app.route("/api/timestamp-repair/cancel", methods=["POST"])
+@require_auth
+def api_timestamp_repair_cancel():
+    timestamp_repair.cancel()
+    return jsonify({"ok": True, "message": "Cancellation requested; names will be restored at the next safe step"})
+
+
+@app.route("/api/timestamp-repair/recover", methods=["POST"])
+@require_auth
+def api_timestamp_repair_recover():
+    result = timestamp_repair.recover()
+    return jsonify(result), (200 if result.get("ok") else 409)
 
 
 @app.route("/api/logs", methods=["GET"])
@@ -1053,6 +1174,15 @@ def api_wizard_save():
         _build_instance_cfg(inst, store_tokens, env_vars_needed)
         for inst in data.get("instances", [])
     ]
+    existing_instances = {
+        str(instance.get("name", "")): instance
+        for instance in existing.get("plex_instances", [])
+        if isinstance(instance, dict)
+    }
+    for instance_cfg in cfg["plex_instances"]:
+        previous = existing_instances.get(instance_cfg["name"], {})
+        if "timestamp_repair" in previous:
+            instance_cfg["timestamp_repair"] = previous["timestamp_repair"]
 
     try:
         runtime_tokens = {

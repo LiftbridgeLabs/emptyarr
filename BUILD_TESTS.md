@@ -118,6 +118,19 @@ python -m unittest discover -s tests -v
 - `test_successful_run_has_one_destructive_call` — a fully valid run contains
   exactly one Plex Empty Trash request.
 
+### Manual timestamp repair
+
+- Read-only SQLite detection filters negative timestamps to explicit path
+  allowlists and deduplicates media-part rows by file.
+- Path containment rejects sibling-prefix escapes, and temporary names preserve
+  the final media extension.
+- A durable manifest exists before the first symlink rename.
+- Ambiguous recovery leaves the manifest in `recovery_required` for review.
+- Any active repair manifest blocks Empty Trash before its health checks begin.
+- Enabled configuration requires both a read-only database path and at least
+  one writable symlink prefix.
+- The repair API rejects folders not present in the latest server-side audit.
+
 ### Web and API security
 
 - `test_ui_renders_with_security_headers` — the UI returns the expected CSP and

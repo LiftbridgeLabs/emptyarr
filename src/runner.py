@@ -13,6 +13,7 @@ from src.checks import check_mountpoint, check_debrid_mount, check_file_threshol
 from src.providers import check_provider
 from src import notifications
 from src.storage import atomic_write_json
+from src.maintenance import lease
 
 logger = logging.getLogger("emptyarr")
 
@@ -478,7 +479,13 @@ def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
                 "A run is already in progress")
         return
     try:
-        _run_library(instance, library, config, plex, plex_checks, dry_run, manual)
+        with lease(instance.name) as (acquired, reason):
+            if not acquired:
+                message = f"Plex maintenance busy — {reason}; trash empty skipped"
+                logger.warning(f"[{instance.name} / {library.name}] {message}")
+                _record(instance.name, library.name, "skipped", {}, message)
+                return
+            _run_library(instance, library, config, plex, plex_checks, dry_run, manual)
     finally:
         run_lock.release()
 
