@@ -2776,35 +2776,90 @@ function renderWizInstList() {
 }
 
 let _plexDiscovered = [];
+const _plexAuthAttempts = new Map();
+
+async function cancelPlexAccountConnect(target, showMessage = true) {
+  const attempt = _plexAuthAttempts.get(target);
+  if (!attempt) return;
+  attempt.cancelled = true;
+  if (attempt.popup && !attempt.popup.closed) attempt.popup.close();
+  if (attempt.state) {
+    try {
+      await fetch(`/api/plex/auth/cancel/${encodeURIComponent(attempt.state)}`, {method:'POST'});
+    } catch (_) {
+      // The local session expires automatically; cancellation is best effort.
+    }
+  }
+  if (_plexAuthAttempts.get(target) === attempt) {
+    _plexAuthAttempts.delete(target);
+    if (showMessage) {
+      const box = document.getElementById(`plex-discovery-${target}`);
+      if (box) box.innerHTML = '<span style="color:var(--muted);">Plex sign-in cancelled.</span>';
+    }
+  }
+}
 
 async function connectPlexAccount(target) {
   const box = document.getElementById(`plex-discovery-${target}`);
   if (!box) return;
-  const popup = window.open('about:blank', '_blank');
+  // Keep window.open in the original click event so popup blockers allow it.
+  cancelPlexAccountConnect(target, false);
+  const popup = window.open(
+    'about:blank',
+    `emptyarr-plex-auth-${target}`,
+    'popup=yes,width=720,height=760,resizable=yes,scrollbars=yes'
+  );
   if (popup) popup.opener = null;
+  const attempt = {popup, state:null, cancelled:false};
+  _plexAuthAttempts.set(target, attempt);
   box.innerHTML = '<span class="spin"></span> Starting Plex sign-in…';
   try {
     const startResponse = await fetch('/api/plex/auth/start', {method:'POST'});
     const started = await startResponse.json();
     if (!started.ok) throw new Error(started.error || 'Could not start Plex sign-in');
-    if (popup) popup.location.replace(started.auth_url);
+    attempt.state = started.state;
+    if (attempt.cancelled || _plexAuthAttempts.get(target) !== attempt) {
+      await fetch(`/api/plex/auth/cancel/${encodeURIComponent(started.state)}`, {method:'POST'});
+      return;
+    }
+    if (popup && !popup.closed) popup.location.replace(started.auth_url);
     box.innerHTML = `<span class="spin"></span> Approve emptyarr in the Plex window. Waiting for authorization…
-      <a href="${h(started.auth_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--info2);margin-left:8px;">Open Plex sign-in</a>`;
+      <a href="${h(started.auth_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--info2);margin-left:8px;">Open Plex sign-in</a>
+      <button class="btn btn-secondary btn-sm" style="margin-left:8px;" onclick="cancelPlexAccountConnect('${h(target)}')">Cancel</button>`;
     const deadline = Date.now() + (started.expires_in * 1000);
+    let pollDelay = 3000;
     while (Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, pollDelay));
+      if (attempt.cancelled || _plexAuthAttempts.get(target) !== attempt) return;
+      // Poll once after a close in case Plex closed the window after approval.
+      const popupWasClosed = Boolean(popup && popup.closed);
       const response = await fetch(`/api/plex/auth/status/${encodeURIComponent(started.state)}`);
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || 'Plex authorization failed');
-      if (result.pending) continue;
+      if (result.pending) {
+        if (popupWasClosed) {
+          await cancelPlexAccountConnect(target);
+          return;
+        }
+        pollDelay = Math.max(3000, Math.min(Number(result.retry_after || 3) * 1000, 60000));
+        continue;
+      }
       _plexDiscovered = result.servers || [];
       if (popup && !popup.closed) popup.close();
+      _plexAuthAttempts.delete(target);
       renderDiscoveredPlex(target);
       return;
     }
     throw new Error('Plex authorization expired');
   } catch (error) {
     if (popup && !popup.closed) popup.close();
+    if (attempt.state) {
+      try {
+        await fetch(`/api/plex/auth/cancel/${encodeURIComponent(attempt.state)}`, {method:'POST'});
+      } catch (_) {}
+    }
+    if (_plexAuthAttempts.get(target) !== attempt) return;
+    _plexAuthAttempts.delete(target);
     box.innerHTML = `<span style="color:var(--fail2);">✗ ${h(error.message)}</span>`;
   }
 }

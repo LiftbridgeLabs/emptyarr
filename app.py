@@ -902,9 +902,17 @@ def api_plex_auth_start():
     """Create a Plex PIN and return the official browser authorization URL."""
     try:
         return jsonify({"ok": True, **plex_auth.start_auth()})
-    except Exception as e:
-        logger.warning("Could not start Plex authorization: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 502
+    except plex_auth.PlexAuthError as exc:
+        logger.warning("Could not start Plex authorization: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    except Exception as exc:
+        logger.warning(
+            "Could not start Plex authorization (%s)", type(exc).__name__
+        )
+        return jsonify({
+            "ok": False,
+            "error": "Plex authorization could not be started",
+        }), 502
 
 
 @app.route("/api/plex/auth/status/<state>", methods=["GET"])
@@ -913,9 +921,25 @@ def api_plex_auth_status(state: str):
     """Poll a Plex PIN and discover reachable servers once it is claimed."""
     try:
         return jsonify(plex_auth.poll_auth(state))
-    except Exception as e:
-        logger.warning("Could not complete Plex authorization: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 502
+    except plex_auth.PlexAuthError as exc:
+        logger.warning("Could not complete Plex authorization: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    except Exception as exc:
+        logger.warning(
+            "Could not complete Plex authorization (%s)", type(exc).__name__
+        )
+        return jsonify({
+            "ok": False,
+            "error": "Plex authorization could not be completed",
+        }), 502
+
+
+@app.route("/api/plex/auth/cancel/<state>", methods=["POST"])
+@require_auth
+def api_plex_auth_cancel(state: str):
+    """Cancel a pending Plex PIN after the user closes or cancels sign-in."""
+    plex_auth.cancel_auth(state)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/wizard/browse", methods=["POST"])

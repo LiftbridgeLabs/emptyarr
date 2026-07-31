@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import requests
 import yaml
 
 _TEST_ROOT = Path(__file__).resolve().parent
@@ -320,6 +321,79 @@ class PlexAuthTests(unittest.TestCase):
         self.assertEqual(connections[0]["uri"], "http://local")
         self.assertTrue(connections[0]["local"])
         self.assertFalse(connections[0]["relay"])
+
+    def tearDown(self):
+        with plex_auth._lock:
+            plex_auth._sessions.clear()
+
+    def test_rate_limit_stays_pending_and_honors_bounded_retry_after(self):
+        with plex_auth._lock:
+            plex_auth._sessions["state"] = {
+                "created_at": time.time(),
+                "pin_id": 123,
+                "code": "secret-pin-code",
+            }
+        response = Mock(status_code=429, headers={"Retry-After": "17"})
+        error = requests.HTTPError(
+            "429 Client Error for https://plex.tv/pins/123?code=secret-pin-code",
+            response=response,
+        )
+        response.raise_for_status.side_effect = error
+        with patch("src.plex_auth.requests.get", return_value=response):
+            result = plex_auth.poll_auth("state")
+        self.assertEqual(
+            result,
+            {"ok": True, "pending": True, "retry_after": 17},
+        )
+        self.assertNotIn("secret-pin-code", str(result))
+
+    def test_cancel_forgets_pending_authorization(self):
+        with plex_auth._lock:
+            plex_auth._sessions["state"] = {
+                "created_at": time.time(), "pin_id": 123, "code": "code",
+            }
+        self.assertTrue(plex_auth.cancel_auth("state"))
+        self.assertFalse(plex_auth.cancel_auth("state"))
+
+    def test_cancel_endpoint_forgets_pending_authorization(self):
+        with plex_auth._lock:
+            plex_auth._sessions["state"] = {
+                "created_at": time.time(), "pin_id": 123, "code": "code",
+            }
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_csrf_token"] = "known-token"
+        response = client.post(
+            "/api/plex/auth/cancel/state",
+            headers={"X-CSRF-Token": "known-token"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["ok"])
+        with plex_auth._lock:
+            self.assertNotIn("state", plex_auth._sessions)
+
+    def test_auth_endpoint_sanitizes_unexpected_poll_failure(self):
+        client = app.app.test_client()
+        secret = "do-not-display-this-pin"
+        with patch.object(
+            plex_auth,
+            "poll_auth",
+            side_effect=RuntimeError(f"failure https://plex.tv/pins?code={secret}"),
+        ):
+            response = client.get("/api/plex/auth/status/state")
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.get_json()["error"],
+            "Plex authorization could not be completed",
+        )
+        self.assertNotIn(secret, response.get_data(as_text=True))
+
+    def test_auth_ui_cancels_closed_popup_and_requests_real_popup(self):
+        html = app.app.test_client().get("/").get_data(as_text=True)
+        self.assertIn("popup=yes,width=720,height=760", html)
+        self.assertIn("const popupWasClosed = Boolean(popup && popup.closed)", html)
+        self.assertIn("if (popupWasClosed)", html)
+        self.assertIn("/api/plex/auth/cancel/", html)
 
 
 class PlexClientTests(unittest.TestCase):

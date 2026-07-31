@@ -22,6 +22,30 @@ _sessions: Dict[str, dict] = {}
 _lock = threading.Lock()
 
 
+class PlexAuthError(RuntimeError):
+    """A user-safe Plex authorization failure with no request URL or PIN code."""
+
+
+def _raise_service_error(action: str, exc: requests.RequestException) -> None:
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is not None:
+        raise PlexAuthError(
+            f"Plex authorization service returned HTTP {status} while {action}"
+        ) from None
+    raise PlexAuthError(
+        f"Could not reach Plex authorization service while {action}"
+    ) from None
+
+
+def _retry_after_seconds(response) -> int:
+    try:
+        value = int(response.headers.get("Retry-After", "10"))
+    except (TypeError, ValueError):
+        value = 10
+    return max(3, min(value, 60))
+
+
 def _client_id_path() -> Path:
     return Path(os.environ.get("PLEX_CLIENT_ID_FILE", "data/plex-client.json"))
 
@@ -65,13 +89,16 @@ def _prune() -> None:
 
 def start_auth() -> dict:
     _prune()
-    response = requests.post(
-        "https://plex.tv/api/v2/pins",
-        headers=_headers(),
-        data={"strong": "true"},
-        timeout=15,
-    )
-    response.raise_for_status()
+    try:
+        response = requests.post(
+            "https://plex.tv/api/v2/pins",
+            headers=_headers(),
+            data={"strong": "true"},
+            timeout=15,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        _raise_service_error("starting sign-in", exc)
     pin = response.json()
     state = secrets.token_urlsafe(24)
     with _lock:
@@ -123,13 +150,16 @@ def _connections(device: dict) -> List[dict]:
 
 
 def _resources(account_token: str) -> List[dict]:
-    response = requests.get(
-        "https://plex.tv/api/v2/resources",
-        headers=_headers(account_token),
-        params={"includeHttps": 1, "includeRelay": 1, "includeIPv6": 1},
-        timeout=20,
-    )
-    response.raise_for_status()
+    try:
+        response = requests.get(
+            "https://plex.tv/api/v2/resources",
+            headers=_headers(account_token),
+            params={"includeHttps": 1, "includeRelay": 1, "includeIPv6": 1},
+            timeout=20,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        _raise_service_error("discovering servers", exc)
     payload = response.json()
     devices = payload if isinstance(payload, list) else payload.get("MediaContainer", {}).get("Device", [])
     servers = []
@@ -186,13 +216,24 @@ def poll_auth(state: str) -> dict:
         pending = dict(_sessions.get(state, {}))
     if not pending:
         return {"ok": False, "error": "Authorization request expired or was not found"}
-    response = requests.get(
-        f"https://plex.tv/api/v2/pins/{pending['pin_id']}",
-        headers=_headers(),
-        params={"code": pending["code"]},
-        timeout=15,
-    )
-    response.raise_for_status()
+    try:
+        response = requests.get(
+            f"https://plex.tv/api/v2/pins/{pending['pin_id']}",
+            headers=_headers(),
+            params={"code": pending["code"]},
+            timeout=15,
+        )
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        if getattr(exc.response, "status_code", None) == 429:
+            return {
+                "ok": True,
+                "pending": True,
+                "retry_after": _retry_after_seconds(exc.response),
+            }
+        _raise_service_error("checking sign-in", exc)
+    except requests.RequestException as exc:
+        _raise_service_error("checking sign-in", exc)
     account_token = response.json().get("authToken")
     if not account_token:
         return {"ok": True, "pending": True}
@@ -207,3 +248,9 @@ def poll_auth(state: str) -> dict:
     else:
         servers = cached
     return {"ok": True, "pending": False, "servers": servers}
+
+
+def cancel_auth(state: str) -> bool:
+    """Forget a pending browser authorization attempt."""
+    with _lock:
+        return _sessions.pop(state, None) is not None
