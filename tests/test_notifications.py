@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import app
 from src import notifications
@@ -70,6 +70,30 @@ class NotificationConfigTests(unittest.TestCase):
 
 
 class NotificationDeliveryTests(unittest.TestCase):
+    def test_discord_delivery_logs_http_status_without_webhook(self):
+        webhook = "https://discord.com/api/webhooks/123/super-secret"
+        response = Mock(status_code=204)
+        with patch("src.notifications.requests.post", return_value=response), \
+             self.assertLogs("emptyarr.notifications", level="INFO") as captured:
+            notifications._post(webhook, {"content": "test"})
+
+        output = "\n".join(captured.output)
+        self.assertIn("HTTP 204", output)
+        self.assertNotIn("super-secret", output)
+        self.assertNotIn(webhook, output)
+
+    def test_discord_failure_logs_only_sanitized_exception_type(self):
+        webhook = "https://discord.com/api/webhooks/123/super-secret"
+        failure = RuntimeError(f"request failed for {webhook}")
+        with patch("src.notifications.requests.post", side_effect=failure), \
+             self.assertLogs("emptyarr.notifications", level="WARNING") as captured:
+            notifications._post(webhook, {"content": "test"})
+
+        output = "\n".join(captured.output)
+        self.assertIn("RuntimeError", output)
+        self.assertNotIn("super-secret", output)
+        self.assertNotIn(webhook, output)
+
     def test_fanout_only_starts_enabled_matching_destinations(self):
         config = AppConfig(
             instances=[],

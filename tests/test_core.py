@@ -19,7 +19,7 @@ import app
 from src.checks import check_debrid_mount, check_file_threshold
 from src.config import (AppConfig, LibraryConfig, PathConfig,
                         PlexInstanceConfig, ProviderCheck, parse_config)
-from src.plex_client import PlexClient
+from src.plex_client import PlexClient, trash_item_key
 from src import runner
 from src import plex_auth
 from src.auth import hash_api_token
@@ -323,6 +323,15 @@ class PlexAuthTests(unittest.TestCase):
 
 
 class PlexClientTests(unittest.TestCase):
+    def test_trash_identity_ignores_volatile_media_version_id(self):
+        before = {
+            "type": "movie", "title": "One", "rating_key": "42",
+            "media_id": "old-version",
+        }
+        after = dict(before, media_id="new-version")
+
+        self.assertEqual(trash_item_key(before), trash_item_key(after))
+
     def test_tv_count_uses_episode_type(self):
         client = PlexClient("http://plex:32400", "token")
         response = Mock()
@@ -577,12 +586,67 @@ class SafetyTests(unittest.TestCase):
     def test_changed_trash_snapshot_never_empties_trash(self):
         instance, library, config, plex = self._run_objects()
         initial = [{"type": "movie", "title": "One", "rating_key": "1"}]
-        changed = initial + [
+        changed_once = initial + [
             {"type": "movie", "title": "Two", "rating_key": "2"},
         ]
-        plex.get_trash_items.side_effect = [initial, changed]
+        changed_twice = changed_once + [
+            {"type": "movie", "title": "Three", "rating_key": "3"},
+        ]
+        changed_thrice = changed_twice + [
+            {"type": "movie", "title": "Four", "rating_key": "4"},
+        ]
+        plex.get_trash_items.side_effect = [
+            initial, changed_once, changed_twice, changed_thrice,
+        ]
         self._run_with_checks(instance, library, config, plex)
         plex.empty_trash.assert_not_called()
+
+    def test_changed_snapshot_retries_until_two_consecutive_match(self):
+        instance, library, config, plex = self._run_objects()
+        initial = [{"type": "movie", "title": "One", "rating_key": "1"}]
+        changed = [
+            {"type": "movie", "title": "Two", "rating_key": "2"},
+        ]
+        plex.get_trash_items.side_effect = [initial, changed, changed, []]
+
+        self._run_with_checks(instance, library, config, plex)
+
+        plex.empty_trash.assert_called_once_with("1")
+
+    def test_media_version_change_does_not_destabilize_snapshot(self):
+        instance, library, config, plex = self._run_objects()
+        initial = [{
+            "type": "movie", "title": "One", "rating_key": "1",
+            "media_id": "old",
+        }]
+        refreshed = [dict(initial[0], media_id="new")]
+        plex.get_trash_items.side_effect = [initial, refreshed, []]
+
+        self._run_with_checks(instance, library, config, plex)
+
+        plex.empty_trash.assert_called_once_with("1")
+
+    def test_stabilized_empty_snapshot_never_calls_empty_trash(self):
+        instance, library, config, plex = self._run_objects()
+        initial = [{"type": "movie", "title": "Gone", "rating_key": "1"}]
+        plex.get_trash_items.side_effect = [initial, [], []]
+
+        self._run_with_checks(instance, library, config, plex)
+
+        plex.empty_trash.assert_not_called()
+
+    def test_snapshot_change_reports_appeared_and_disappeared_items(self):
+        instance, library, config, plex = self._run_objects()
+        initial = [{"type": "movie", "title": "Gone", "rating_key": "1"}]
+        changed = [{"type": "movie", "title": "New", "rating_key": "2"}]
+        plex.get_trash_items.side_effect = [initial, changed, changed, []]
+
+        with self.assertLogs("emptyarr", level="WARNING") as captured:
+            self._run_with_checks(instance, library, config, plex)
+
+        output = "\n".join(captured.output)
+        self.assertIn("appeared: New [ratingKey 2]", output)
+        self.assertIn("disappeared: Gone [ratingKey 1]", output)
 
     def test_deletion_limit_never_empties_oversized_snapshot(self):
         instance, library, config, plex = self._run_objects(

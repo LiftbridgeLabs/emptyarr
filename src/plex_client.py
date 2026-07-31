@@ -21,9 +21,8 @@ _TYPE_LABELS = {
 def trash_item_key(item: Dict) -> tuple:
     """Return the most stable identity available for a Plex trash item."""
     rating_key = str(item.get("rating_key", ""))
-    media_id = str(item.get("media_id", ""))
     if rating_key:
-        return ("rating", rating_key, media_id)
+        return ("rating", rating_key)
     return (
         "composite",
         item.get("media_type_id", ""),
@@ -34,7 +33,6 @@ def trash_item_key(item: Dict) -> tuple:
         item.get("parent_title", ""),
         item.get("parent_index", ""),
         item.get("grandparent_title", ""),
-        media_id,
     )
 
 

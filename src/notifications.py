@@ -23,11 +23,15 @@ def _post(webhook_url: str, payload: dict):
     # Validate it's actually a Discord webhook URL to prevent SSRF
     if not webhook_url.startswith("https://discord.com/api/webhooks/") and \
        not webhook_url.startswith("https://discordapp.com/api/webhooks/"):
+        logger.warning("Discord delivery skipped: invalid webhook URL")
         return
     try:
-        requests.post(webhook_url, json=payload, timeout=10)
-    except Exception:
-        pass
+        response = requests.post(webhook_url, json=payload, timeout=10)
+        logger.info("Discord delivery completed with HTTP %s",
+                    response.status_code)
+    except Exception as exc:
+        # HTTP client exception text can contain the credential-bearing URL.
+        logger.warning("Discord delivery failed (%s)", type(exc).__name__)
 
 
 def _check_fields(checks: Dict) -> list:

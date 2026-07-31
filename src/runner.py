@@ -25,6 +25,8 @@ _lock = threading.Lock()
 _run_locks: Dict[str, threading.Lock] = {}
 
 _STATE_FILE = os.environ.get("STATE_FILE", "data/state.json")
+TRASH_SNAPSHOT_RETRY_DELAY = 1
+TRASH_SNAPSHOT_MAX_RETRIES = 2
 
 
 def _load_state():
@@ -239,6 +241,27 @@ def _trash_snapshots_match(before: List[Dict], after: List[Dict]) -> bool:
     )
 
 
+def _snapshot_difference(before: List[Dict], after: List[Dict]) -> tuple[List[Dict], List[Dict]]:
+    """Return items that appeared and disappeared, preserving item details."""
+    return _items_removed(after, before), _items_removed(before, after)
+
+
+def _item_summary(items: List[Dict]) -> str:
+    if not items:
+        return "none"
+    labels = []
+    for item in items[:10]:
+        label = item.get("title") or "Unknown"
+        if item.get("year"):
+            label += f" ({item['year']})"
+        if item.get("rating_key"):
+            label += f" [ratingKey {item['rating_key']}]"
+        labels.append(label)
+    if len(items) > 10:
+        labels.append(f"...and {len(items) - 10} more")
+    return ", ".join(labels)
+
+
 def _deletion_limit_check(config: AppConfig, items: List[Dict],
                           plex_count: Optional[int]) -> Dict:
     count = _headline_count(items)
@@ -384,24 +407,55 @@ def _confirm_preflight(config: AppConfig, instance: PlexInstanceConfig,
         _handle_checks_failed(config, instance, library, checks, failed)
         return None, checks
 
-    confirmed_items = plex.get_trash_items(section_id)
-    if confirmed_items is None:
-        _record_inventory_error(
-            config, instance, library, checks,
-            "Final trash inventory failed — refusing to empty",
+    previous_items = original_items
+    confirmed_items = None
+    changes = []
+    for attempt in range(TRASH_SNAPSHOT_MAX_RETRIES + 1):
+        current_items = plex.get_trash_items(section_id)
+        if current_items is None:
+            _record_inventory_error(
+                config, instance, library, checks,
+                "Final trash inventory failed — refusing to empty",
+            )
+            return None, checks
+        if _trash_snapshots_match(previous_items, current_items):
+            confirmed_items = current_items
+            break
+
+        appeared, disappeared = _snapshot_difference(previous_items, current_items)
+        change_detail = (
+            f"appeared: {_item_summary(appeared)}; "
+            f"disappeared: {_item_summary(disappeared)}"
         )
-        return None, checks
-    snapshot_stable = _trash_snapshots_match(original_items, confirmed_items)
+        changes.append(change_detail)
+        logger.warning(
+            f"[{instance.name} / {library.name}] "
+            f"Trash inventory changed ({change_detail})"
+        )
+        previous_items = current_items
+        if attempt < TRASH_SNAPSHOT_MAX_RETRIES:
+            time.sleep(TRASH_SNAPSHOT_RETRY_DELAY)
+
+    snapshot_stable = confirmed_items is not None
     checks["Trash snapshot"] = {
         "pass": snapshot_stable,
         "detail": (
-            "Trash snapshot remained stable"
+            (
+                "Two consecutive trash snapshots matched"
+                + (f" after changes ({' | '.join(changes)})" if changes else "")
+            )
             if snapshot_stable
-            else "Trash changed after the initial inventory — refusing to empty"
+            else (
+                "Trash did not stabilize after brief retries — refusing to empty"
+                + (f" ({' | '.join(changes)})" if changes else "")
+            )
         ),
     }
+    limit_items = (
+        confirmed_items if confirmed_items is not None else previous_items
+    )
     checks["Deletion limit"] = _deletion_limit_check(
-        config, confirmed_items, plex_count,
+        config, limit_items, plex_count,
     )
     failed = _failed_checks(checks)
     if failed:
@@ -496,6 +550,11 @@ def _run_library(instance: PlexInstanceConfig, library: LibraryConfig,
     if confirmed_items is None:
         return
     trash_items = confirmed_items
+    if not trash_items:
+        _handle_empty_success(
+            config, instance, library, trash_items, all_checks, [],
+        )
+        return
 
     # Keep this as the single destructive Empty Trash call site.
     result = plex.empty_trash(section_id)
