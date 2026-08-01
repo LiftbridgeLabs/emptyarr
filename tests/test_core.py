@@ -475,6 +475,25 @@ class PlexClientTests(unittest.TestCase):
 
 
 class MetadataAuditTests(unittest.TestCase):
+    def test_metadata_health_ignores_round_trip_through_config_builder(self):
+        raw = {
+            "name": "Plex",
+            "url": "http://plex:32400",
+            "token": "token",
+            "metadata_health": {"ignored_libraries": ["Youtube"]},
+            "libraries": [],
+        }
+        parsed = parse_config({"plex_instances": [raw]})
+        self.assertEqual(
+            parsed.instances[0].metadata_health.ignored_libraries,
+            ["Youtube"],
+        )
+        built = app._build_instance_cfg(raw, True, [])
+        self.assertEqual(
+            built["metadata_health"]["ignored_libraries"],
+            ["Youtube"],
+        )
+
     def test_audit_returns_direct_links_without_touching_trash(self):
         library = LibraryConfig("Movies", "physical", [], section_id="1")
         instance = PlexInstanceConfig(
@@ -528,10 +547,58 @@ class MetadataAuditTests(unittest.TestCase):
 
     def test_match_audit_ui_is_explicitly_manual_and_read_only(self):
         html = app.app.test_client().get("/").get_data(as_text=True)
-        self.assertIn("Match Audit", html)
-        self.assertIn("Audit now", html)
+        self.assertIn("Metadata Health", html)
+        self.assertIn("Scan all servers", html)
+        self.assertIn("Show details", html)
         self.assertIn("read-only", html)
         self.assertIn("affect Empty Trash safety decisions", html)
+
+    def test_ignored_metadata_library_is_not_requested(self):
+        movies = LibraryConfig("Movies", "physical", [], section_id="1")
+        youtube = LibraryConfig("Youtube", "physical", [], section_id="2")
+        instance = PlexInstanceConfig(
+            "Plex", "http://plex:32400", "token", [movies, youtube],
+            machine_id="server-id",
+        )
+        instance.metadata_health.ignored_libraries = ["Youtube"]
+        target_config = AppConfig(instances=[instance])
+        plex = Mock()
+        plex.get_sections.return_value = [
+            {"id": "1", "title": "Movies", "type": "movie"},
+            {"id": "2", "title": "Youtube", "type": "movie"},
+        ]
+        plex.get_unmatched_items.return_value = {"total_items": 10, "items": []}
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_csrf_token"] = "known-token"
+
+        with patch.object(app, "config", target_config), \
+             patch.object(app, "plex_clients", {instance.name: plex}), \
+             patch.object(app, "_read_metadata_audits", return_value={}), \
+             patch.object(app, "atomic_write_json"):
+            response = client.post(
+                "/api/metadata-audit/run",
+                json={"instance": instance.name},
+                headers={"X-CSRF-Token": "known-token"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [library["name"] for library in response.get_json()["libraries"]],
+            ["Movies"],
+        )
+        plex.get_unmatched_items.assert_called_once_with("1")
+
+    def test_navigation_and_startup_progress_match_feature_layout(self):
+        html = app.app.test_client().get("/").get_data(as_text=True)
+        labels = ["Dashboard", "Emptyarr", "Metadata Health",
+                  "Timestamp Repair", "Settings"]
+        positions = [html.index(f">\n      {label}\n") for label in labels]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("emptyarr-startup-progress", html)
+        self.assertIn("dashboard-startup-progress", html)
+        self.assertIn("moveProtectionControls", html)
+        self.assertIn("showPage('dashboard'", html)
 
     def test_startup_status_refresh_runs_in_background(self):
         library = LibraryConfig("Movies", "physical", [], section_id="1")
@@ -557,6 +624,9 @@ class MetadataAuditTests(unittest.TestCase):
         refresh.assert_called_once_with(
             instance, library, target_config, plex, checks,
         )
+        self.assertFalse(app._status_refresh_progress["running"])
+        self.assertEqual(app._status_refresh_progress["completed"], 1)
+        self.assertEqual(app._status_refresh_progress["total"], 1)
 
 
 class SafetyTests(unittest.TestCase):

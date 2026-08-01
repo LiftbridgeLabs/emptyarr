@@ -83,11 +83,18 @@ python -m unittest discover -s tests -v
   calling Empty Trash.
 - `test_startup_status_refresh_runs_in_background` — the preload is launched in
   a daemon worker and covers each configured library.
-- `test_audit_returns_direct_links_without_touching_trash` — Match Audit returns
+- `test_audit_returns_direct_links_without_touching_trash` — Metadata Health returns
   rating keys and encoded Plex detail links without entering the destructive
   workflow.
 - `test_match_audit_ui_is_explicitly_manual_and_read_only` — the UI identifies
   the audit as manual, read-only, and separate from the Empty Trash safety gate.
+- `test_ignored_metadata_library_is_not_requested` — per-server exclusions are
+  applied before Plex library item requests.
+- `test_metadata_health_ignores_round_trip_through_config_builder` — Metadata
+  Health exclusions survive parsing and UI configuration saves.
+- `test_navigation_and_startup_progress_match_feature_layout` — navigation,
+  rollup pages, and visible startup progress remain wired to their intended
+  feature areas.
 
 ### Trash protection and destructive workflow
 

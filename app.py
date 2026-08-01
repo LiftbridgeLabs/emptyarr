@@ -171,6 +171,13 @@ _next_runs: dict = {}
 _runtime_lock = threading.RLock()
 _config_file_lock = threading.Lock()
 _status_refresh_lock = threading.Lock()
+_status_refresh_progress_lock = threading.Lock()
+_status_refresh_progress = {
+    "running": False,
+    "completed": 0,
+    "total": 0,
+    "current": "",
+}
 
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
@@ -222,17 +229,39 @@ def _start_readonly_status_refresh(target_config: AppConfig = None,
     """Refresh dashboard safety state in the background without touching trash."""
     target = target_config or config
     target_clients = clients or plex_clients
+    total = sum(len(instance.libraries) for instance in target.instances)
+    with _status_refresh_progress_lock:
+        _status_refresh_progress.update({
+            "running": True,
+            "completed": 0,
+            "total": total,
+            "current": "Waiting to start",
+        })
 
     def refresh():
-        if not _status_refresh_lock.acquire(blocking=False):
-            return
+        _status_refresh_lock.acquire()
         try:
+            with _status_refresh_progress_lock:
+                _status_refresh_progress.update({
+                    "running": True,
+                    "completed": 0,
+                    "total": total,
+                    "current": "Connecting to Plex servers",
+                })
             for instance in target.instances:
                 plex = target_clients.get(instance.name)
                 if plex is None:
+                    with _status_refresh_progress_lock:
+                        _status_refresh_progress["completed"] += len(
+                            instance.libraries
+                        )
                     continue
                 plex_checks = runner.run_instance_checks(instance, plex)
                 for library in instance.libraries:
+                    with _status_refresh_progress_lock:
+                        _status_refresh_progress["current"] = (
+                            f"{instance.name} / {library.name}"
+                        )
                     try:
                         runner.refresh_protection_status(
                             instance, library, target, plex, plex_checks,
@@ -242,7 +271,13 @@ def _start_readonly_status_refresh(target_config: AppConfig = None,
                             "[%s / %s] Read-only status refresh failed (%s)",
                             instance.name, library.name, type(exc).__name__,
                         )
+                    finally:
+                        with _status_refresh_progress_lock:
+                            _status_refresh_progress["completed"] += 1
         finally:
+            with _status_refresh_progress_lock:
+                _status_refresh_progress["running"] = False
+                _status_refresh_progress["current"] = "Safety status is current"
             _status_refresh_lock.release()
 
     threading.Thread(
@@ -351,6 +386,16 @@ def _validate_instance(instance, names: set, machine_ids: set,
         raise ValueError(f"Duplicate Plex server identifier: {machine_id}")
     if machine_id:
         machine_ids.add(machine_id)
+    metadata_health = instance.get("metadata_health", {})
+    if not isinstance(metadata_health, dict):
+        raise ValueError(f"{name}: metadata_health must be an object")
+    ignored_libraries = metadata_health.get("ignored_libraries", [])
+    if not isinstance(ignored_libraries, list) or any(
+        not str(library).strip() for library in ignored_libraries
+    ):
+        raise ValueError(
+            f"{name}: ignored metadata libraries must be a list of names"
+        )
     repair = instance.get("timestamp_repair", {})
     if not isinstance(repair, dict):
         raise ValueError(f"{name}: timestamp_repair must be an object")
@@ -692,6 +737,8 @@ def index():
 @app.route("/api/status", methods=["GET"])
 @require_auth
 def api_status():
+    with _status_refresh_progress_lock:
+        refresh_progress = dict(_status_refresh_progress)
     return jsonify({
         "instances":          _build_ui_instances(),
         "next_runs":          _next_runs,
@@ -701,6 +748,7 @@ def api_status():
         "config_missing":     config.config_missing,
         "auth_enabled":       auth_enabled(config),
         "version":            __version__,
+        "startup_checks":     refresh_progress,
     })
 
 
@@ -715,9 +763,14 @@ def api_history():
 def api_metadata_audit_status():
     with _runtime_lock:
         instances = [instance.name for instance in config.instances]
+        ignored = {
+            instance.name: list(instance.metadata_health.ignored_libraries)
+            for instance in config.instances
+        }
     return jsonify({
         "instances": instances,
         "audits": _read_metadata_audits(),
+        "ignored_libraries": ignored,
     })
 
 
@@ -749,7 +802,12 @@ def api_metadata_audit_run():
     total_items = 0
     unmatched_count = 0
     error_count = 0
+    ignored_names = {
+        name.casefold() for name in instance.metadata_health.ignored_libraries
+    }
     for library in instance.libraries:
+        if library.name.casefold() in ignored_names:
+            continue
         section = (
             by_id.get(str(library.section_id))
             if library.section_id else by_name.get(library.name.casefold())
@@ -1601,6 +1659,15 @@ def _build_instance_cfg(inst: dict, store_tokens: bool, env_vars_needed: list) -
             "scan_timeout_seconds": int(repair.get("scan_timeout_seconds", 1800)),
             "poll_interval_seconds": int(repair.get("poll_interval_seconds", 5)),
             "heartbeat_seconds": int(repair.get("heartbeat_seconds", 30)),
+        }
+    metadata_health = inst.get("metadata_health", {})
+    if isinstance(metadata_health, dict):
+        instance_cfg["metadata_health"] = {
+            "ignored_libraries": [
+                str(name).strip()
+                for name in metadata_health.get("ignored_libraries", [])
+                if str(name).strip()
+            ],
         }
     return instance_cfg
 

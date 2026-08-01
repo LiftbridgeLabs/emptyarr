@@ -77,6 +77,10 @@ plex_instances:
   - name: My Plex
     url: http://192.168.1.100:32400
     token: ""  # set via PLEX_TOKEN_MY_PLEX env var, or paste in Settings UI
+    # Optional: exclude libraries that intentionally use local-only metadata.
+    metadata_health:
+      ignored_libraries:
+        - Youtube
     # Optional, manual-only repair for Plex parts with negative timestamps.
     # The database directory must be mounted read-only. Each allowed prefix
     # must be a narrow library-facing symlink tree mounted read/write.

@@ -49,6 +49,11 @@ class TimestampRepairConfig:
 
 
 @dataclass
+class MetadataHealthConfig:
+    ignored_libraries: List[str] = field(default_factory=list)
+
+
+@dataclass
 class RepairWorkerConfig:
     name: str
     url: str
@@ -66,6 +71,7 @@ class PlexInstanceConfig:
     libraries: List[LibraryConfig]
     machine_id: Optional[str] = None
     timestamp_repair: TimestampRepairConfig = field(default_factory=TimestampRepairConfig)
+    metadata_health: MetadataHealthConfig = field(default_factory=MetadataHealthConfig)
 
 
 # ── Notification config ───────────────────────────────────────────────────────
@@ -225,6 +231,12 @@ def _load_instance(raw: dict) -> PlexInstanceConfig:
         poll_interval_seconds=int(repair_raw.get("poll_interval_seconds", 5)),
         heartbeat_seconds=int(repair_raw.get("heartbeat_seconds", 30)),
     )
+    metadata_raw = raw.get("metadata_health", {})
+    if not isinstance(metadata_raw, dict):
+        metadata_raw = {}
+    ignored_libraries = metadata_raw.get("ignored_libraries", [])
+    if not isinstance(ignored_libraries, list):
+        ignored_libraries = []
     return PlexInstanceConfig(
         name      = raw["name"],
         url       = url,
@@ -232,6 +244,9 @@ def _load_instance(raw: dict) -> PlexInstanceConfig:
         libraries = [_load_library(lib) for lib in raw.get("libraries", [])],
         machine_id = raw.get("machine_id"),
         timestamp_repair = repair,
+        metadata_health = MetadataHealthConfig(
+            ignored_libraries=[str(name) for name in ignored_libraries],
+        ),
     )
 
 

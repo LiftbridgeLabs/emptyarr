@@ -171,15 +171,16 @@ scheduled protection run. This preload does not inspect trash, write history,
 send notifications, or call Plex's Empty Trash endpoint. **Run now** remains
 available when an immediate full safety run is wanted.
 
-### Plex match audit
+### Metadata Health
 
-Open **Match Audit** to run an explicit, read-only scan for top-level movie and
+Open **Metadata Health** to run an explicit, read-only scan for top-level movie and
 show items whose primary Plex GUID starts with `local://`. Emptyarr makes one
 bulk Plex request per configured movie or TV library, saves the latest result,
 and displays the title, rating key, metadata key, and a direct Plex details
-link. This audit is never scheduled and does not affect the Empty Trash safety
+link. This scan is never scheduled and does not affect the Empty Trash safety
 gate. It uses the existing Plex connection and requires no additional Docker
-variables or volume mappings.
+variables or volume mappings. Per-server settings can exclude libraries that
+intentionally use local-only metadata, such as YouTube libraries.
 
 ### Manual Plex part timestamp repair
 
@@ -249,7 +250,7 @@ manually for every allowed repair prefix:
 
 There is deliberately no generic `/repairable` directory and the template does
 not create one: the correct path is specific to each media layout. Do not make
-the broad media-root mapping writable. Neither Match Audit nor the startup
+the broad media-root mapping writable. Neither Metadata Health nor the startup
 safety preload needs these repair-only mappings.
 
 #### Plex on another machine
