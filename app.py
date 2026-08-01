@@ -228,6 +228,10 @@ def _start_readonly_status_refresh(target_config: AppConfig = None,
                                     clients: dict[str, PlexClient] = None) -> None:
     """Refresh dashboard safety state in the background without touching trash."""
     target = target_config or config
+    if not target.features.trash_removal:
+        with _status_refresh_progress_lock:
+            _status_refresh_progress.update({"running": False, "completed": 0, "total": 0, "current": "Trash Removal disabled"})
+        return
     target_clients = clients or plex_clients
     total = sum(len(instance.libraries) for instance in target.instances)
     with _status_refresh_progress_lock:
@@ -287,14 +291,16 @@ def _start_readonly_status_refresh(target_config: AppConfig = None,
 
 def _setup_scheduler(new_config: AppConfig = None):
     target = new_config or config
+    scheduler.remove_all_jobs()
+    _next_runs.clear()
+    if not target.features.trash_removal:
+        return
+
     triggers = {}
     for inst in target.instances:
         for lib in inst.libraries:
             key = _job_key(inst.name, lib.name)
             triggers[key] = CronTrigger.from_crontab(_effective_cron(target, lib))
-
-    scheduler.remove_all_jobs()
-    _next_runs.clear()
     for inst in target.instances:
         for lib in inst.libraries:
             key = _job_key(inst.name, lib.name)
@@ -404,9 +410,9 @@ def _validate_instance(instance, names: set, machine_ids: set,
     database_path = str(repair.get("database_path", "")).strip()
     prefixes = repair.get("allowed_prefixes", [])
     if not isinstance(prefixes, list) or any(not str(path).strip() for path in prefixes):
-        raise ValueError(f"{name}: timestamp repair prefixes must be a list of paths")
+        raise ValueError(f"{name}: timestamp repair folders must be a list of paths")
     if enabled and (not database_path or not prefixes):
-        raise ValueError(f"{name}: enabled timestamp repair requires a database path and allowed prefixes")
+        raise ValueError(f"{name}: enabled timestamp repair requires a database path and at least one repair folder")
     if enabled and worker != "local" and worker not in worker_names:
         raise ValueError(f"{name}: timestamp repair worker '{worker}' is not configured")
     if not 1 <= int(repair.get("max_files_per_folder", 5)) <= 100:
@@ -558,7 +564,6 @@ def _apply_runtime_config(new_config: AppConfig) -> None:
         for library in instance.libraries
     }
     runner.prune_runtime_state(valid)
-    _start_readonly_status_refresh(new_config, new_clients)
     logging.getLogger().setLevel(new_config.log_level.upper())
     log_manager.configure(
         new_config.log_max_file_size_mb,
@@ -767,16 +772,26 @@ def api_metadata_audit_status():
             instance.name: list(instance.metadata_health.ignored_libraries)
             for instance in config.instances
         }
+        libraries = {
+            instance.name: [
+                {"name": library.name, "type": library.type}
+                for library in instance.libraries
+            ]
+            for instance in config.instances
+        }
     return jsonify({
         "instances": instances,
         "audits": _read_metadata_audits(),
         "ignored_libraries": ignored,
+        "libraries": libraries,
     })
 
 
 @app.route("/api/metadata-audit/run", methods=["POST"])
 @require_auth
 def api_metadata_audit_run():
+    if not config.features.metadata_health:
+        return jsonify({"ok": False, "error": "Metadata Health is disabled"}), 409
     requested = str((request.get_json(silent=True) or {}).get("instance", ""))
     with _runtime_lock:
         instance = next((item for item in config.instances
@@ -897,15 +912,37 @@ def _enrich_repair_audit(result: dict, plex) -> dict:
     total = 0
     libraries = result.get("libraries", [])
     all_known = bool(libraries)
+    try:
+        sections = plex.get_sections()
+        section_types = {
+            str(section.get("id", "")): str(section.get("type", ""))
+            for section in sections
+        } if isinstance(sections, list) else {}
+    except Exception:
+        section_types = {}
     for library in libraries:
+        section_id = str(library.get("library_section_id", ""))
+        library["type"] = section_types.get(section_id, "")
         count = plex.get_library_item_count(
-            str(library.get("library_section_id", "")),
+            section_id,
         )
         if isinstance(count, int) and count >= 0:
             library["total_items"] = count
             total += count
         else:
             all_known = False
+    library_types = {
+        str(library.get("library_section_id", "")): library.get("type", "")
+        for library in libraries
+    }
+    for folder in result.get("folders", []):
+        folder["library_type"] = library_types.get(
+            str(folder.get("library_section_id", "")), "",
+        )
+    for issue in result.get("path_issues", []):
+        issue["library_type"] = library_types.get(
+            str(issue.get("library_section_id", "")), "",
+        )
     result["total_library_items"] = total if all_known else None
     return result
 
@@ -1011,6 +1048,31 @@ def api_timestamp_repair_status():
             "last_heartbeat": external.get("last_heartbeat"),
             "active_transaction": external,
         })
+    worker_statuses = {}
+    for instance in config.instances:
+        worker_name = instance.timestamp_repair.worker
+        if worker_name == "local" or worker_name in worker_statuses:
+            continue
+        worker = _repair_worker(worker_name)
+        if not worker:
+            continue
+        try:
+            worker_statuses[worker_name] = RepairWorkerClient(
+                worker, timeout=3,
+            ).status()
+        except Exception:
+            worker_statuses[worker_name] = {}
+    for instance in config.instances:
+        worker_audit = worker_statuses.get(
+            instance.timestamp_repair.worker, {},
+        ).get("audits", {}).get(instance.name, {})
+        local_audit = status.get("audits", {}).get(instance.name, {})
+        if worker_audit and local_audit:
+            for key in (
+                "live_database_distinct_files", "database_count_changed",
+            ):
+                if key in worker_audit:
+                    local_audit[key] = worker_audit[key]
     status["instances"] = [
         {
             "name": instance.name,
@@ -1028,6 +1090,8 @@ def api_timestamp_repair_status():
 @app.route("/api/timestamp-repair/audit", methods=["POST"])
 @require_auth
 def api_timestamp_repair_audit():
+    if not config.features.timestamp_repair:
+        return jsonify({"error": "Timestamp Repair is disabled"}), 409
     data = request.get_json(silent=True) or {}
     instance, _, plex = _timestamp_runtime(str(data.get("instance", "")))
     if not instance:
@@ -1054,6 +1118,8 @@ def api_timestamp_repair_audit():
 @app.route("/api/timestamp-repair/run", methods=["POST"])
 @require_auth
 def api_timestamp_repair_run():
+    if not config.features.timestamp_repair:
+        return jsonify({"error": "Timestamp Repair is disabled"}), 409
     data = request.get_json(silent=True) or {}
     instance_name = str(data.get("instance", ""))
     section_id = str(data.get("library_section_id", ""))
@@ -1317,6 +1383,11 @@ def api_checks():
 def api_scheduling():
     data    = request.get_json(silent=True) or {}
     enabled = bool(data.get("enabled", True))
+    if enabled and not config.features.trash_removal:
+        return jsonify({
+            "scheduling_enabled": False,
+            "error": "Trash Removal is disabled",
+        }), 409
     set_scheduling_enabled(enabled)
     return jsonify({"scheduling_enabled": enabled})
 
@@ -1324,6 +1395,8 @@ def api_scheduling():
 def _trigger(instance_name: str, library_name: str, dry_run: bool = False):
     with _runtime_lock:
         live_config = config
+        if not live_config.features.trash_removal:
+            return False
         inst = next((i for i in live_config.instances if i.name == instance_name), None)
         lib = next((l for l in inst.libraries
                     if l.name == library_name), None) if inst else None
@@ -1343,6 +1416,8 @@ def _trigger(instance_name: str, library_name: str, dry_run: bool = False):
 @app.route("/api/run/<instance_name>/<library_name>", methods=["POST"])
 @require_auth
 def api_run_library(instance_name: str, library_name: str):
+    if not config.features.trash_removal:
+        return jsonify({"error": "Trash Removal is disabled"}), 409
     if _trigger(instance_name, library_name):
         return jsonify({"status": "triggered"})
     return jsonify({"error": "not found"}), 404
@@ -1351,6 +1426,8 @@ def api_run_library(instance_name: str, library_name: str):
 @app.route("/api/dryrun/<instance_name>/<library_name>", methods=["POST"])
 @require_auth
 def api_dryrun_library(instance_name: str, library_name: str):
+    if not config.features.trash_removal:
+        return jsonify({"error": "Trash Removal is disabled"}), 409
     if _trigger(instance_name, library_name, dry_run=True):
         return jsonify({"status": "dry_run_triggered"})
     return jsonify({"error": "not found"}), 404
@@ -1359,6 +1436,8 @@ def api_dryrun_library(instance_name: str, library_name: str):
 @app.route("/api/run/all", methods=["POST"])
 @require_auth
 def api_run_all():
+    if not config.features.trash_removal:
+        return jsonify({"error": "Trash Removal is disabled"}), 409
     def _run():
         with _runtime_lock:
             live_config = config
@@ -1378,6 +1457,8 @@ def api_run_all():
 @app.route("/api/dryrun/all", methods=["POST"])
 @require_auth
 def api_dryrun_all():
+    if not config.features.trash_removal:
+        return jsonify({"error": "Trash Removal is disabled"}), 409
     def _run():
         with _runtime_lock:
             live_config = config
@@ -1707,6 +1788,7 @@ def api_wizard_save():
     )
 
     cfg = {
+        "features": data.get("features", existing.get("features", {})),
         "discord_webhook": data.get("discord_webhook", ""),
         "log_level": data.get("log_level", existing.get("log_level", "INFO")),
         "notify": {

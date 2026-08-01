@@ -57,7 +57,7 @@ services:
   #     - PUID=99
   #     - PGID=100
   #   volumes:
-  #     - ./emptyarr-worker-data:/app/data
+  #     - ${EMPTYARR_WORKER_DATA_DIR:?Set an absolute worker-data host path}:/app/data
   #     - /host/plex/Databases:/plex-db:ro
   #     # The destination must exactly match the path stored by Plex.
   #     - /host/provider-links:/mnt/symlink_media/symlinks/provider:rw,slave

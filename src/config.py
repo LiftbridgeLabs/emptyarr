@@ -61,6 +61,13 @@ class RepairWorkerConfig:
     controller_url: str
 
 
+@dataclass
+class FeatureConfig:
+    trash_removal: bool = True
+    metadata_health: bool = True
+    timestamp_repair: bool = True
+
+
 # ── Plex instance config ──────────────────────────────────────────────────────
 
 @dataclass
@@ -108,6 +115,7 @@ class NotificationDestination:
 @dataclass
 class AppConfig:
     instances: List[PlexInstanceConfig]
+    features: FeatureConfig = field(default_factory=FeatureConfig)
     repair_workers: List[RepairWorkerConfig] = field(default_factory=list)
     discord_webhook: str = ""
     notify: NotifyConfig = field(default_factory=NotifyConfig)
@@ -310,6 +318,14 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
     auth_api_token_hash = auth_raw.get("api_token_hash", "")
 
     providers_raw = raw.get("providers", {})
+    features_raw = raw.get("features", {})
+    if not isinstance(features_raw, dict):
+        features_raw = {}
+    features = FeatureConfig(
+        trash_removal=features_raw.get("trash_removal", True) is not False,
+        metadata_health=features_raw.get("metadata_health", True) is not False,
+        timestamp_repair=features_raw.get("timestamp_repair", True) is not False,
+    )
     clean_bundles_before_empty = bool(raw.get("clean_bundles_before_empty", False))
     max_trash_items = int(raw.get("max_trash_items", 1000))
     max_trash_percent = float(raw.get("max_trash_percent", 25))
@@ -349,6 +365,7 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
 
     return AppConfig(
         instances           = instances,
+        features            = features,
         repair_workers      = repair_workers,
         discord_webhook     = discord,
         notify              = notify,

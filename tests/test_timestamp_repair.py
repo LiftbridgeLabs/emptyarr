@@ -1,8 +1,10 @@
 import json
+import os
 import sqlite3
 import unittest
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import app
@@ -48,12 +50,70 @@ class TimestampRepairDetectionTests(unittest.TestCase):
 
     def tearDown(self):
         self.database.unlink(missing_ok=True)
+        (self.root / "data" / "timestamp-repair" / "audit.json").unlink(
+            missing_ok=True,
+        )
 
     def test_read_only_detector_is_generic_and_deduplicates_files(self):
         parts = self.manager.detect(self.config, "2")
         self.assertEqual(len(parts), 1)
         self.assertEqual(parts[0].file_path, "/links/provider/Movie/Movie.mkv")
         self.assertEqual(parts[0].folder, "/links/provider/Movie")
+
+    def test_audit_separates_missing_broken_and_regular_paths(self):
+        real_stat = os.stat
+        with closing(sqlite3.connect(self.database)) as connection:
+            connection.executemany(
+                "INSERT INTO media_parts VALUES (?, 20, ?, ?, NULL)",
+                [
+                    (40, "/links/provider/Missing.mkv", -8),
+                    (41, "/links/provider/Broken.mkv", -9),
+                    (42, "/links/provider/Regular.mkv", -10),
+                ],
+            )
+            connection.commit()
+        instance = SimpleNamespace(
+            name="Plex",
+            libraries=[LibraryConfig(
+                "Movies", "physical", [], section_id="2",
+            )],
+        )
+        with patch("src.timestamp_repair.os.path.lexists",
+                   side_effect=lambda path: not path.endswith("Missing.mkv")), \
+             patch("src.timestamp_repair.os.path.islink",
+                   side_effect=lambda path: not path.endswith("Regular.mkv")), \
+             patch("src.timestamp_repair.os.path.exists",
+                   side_effect=lambda path: not path.endswith("Broken.mkv")), \
+             patch("src.timestamp_repair.os.stat",
+                   side_effect=lambda path, *args, **kwargs: (
+                       SimpleNamespace(st_mtime=1_722_124_800)
+                       if str(path).startswith("/links/provider/")
+                       else real_stat(path, *args, **kwargs)
+                   )):
+            audit = self.manager.audit(instance, self.config)
+
+        self.assertEqual(audit["database_distinct_files"], 4)
+        self.assertEqual(audit["distinct_files"], 1)
+        self.assertEqual(audit["path_state_counts"], {
+            "repairable_timestamp": 1,
+            "missing_path": 1,
+            "broken_symlink": 1,
+            "regular_file": 1,
+        })
+        self.assertEqual(
+            {issue["path_state"] for issue in audit["path_issues"]},
+            {"missing_path", "broken_symlink", "regular_file"},
+        )
+        self.assertTrue(audit["folders"][0]["files"][0]["filesystem_timestamp_iso"])
+        with closing(sqlite3.connect(self.database)) as connection:
+            connection.execute(
+                "INSERT INTO media_parts VALUES (43, 20, ?, -11, NULL)",
+                ("/links/provider/NewAfterAudit.mkv",),
+            )
+            connection.commit()
+        live_audit = self.manager.status()["audits"]["Plex"]
+        self.assertTrue(live_audit["database_count_changed"])
+        self.assertEqual(live_audit["live_database_distinct_files"], 5)
 
     def test_prefix_containment_rejects_sibling_prefix_attack(self):
         self.assertTrue(_inside("/links/provider/Movie/file.mkv", "/links/provider"))
@@ -107,7 +167,8 @@ class TimestampRepairTransactionTests(unittest.TestCase):
         with patch.object(self.manager, "detect", return_value=[part]), \
              patch.object(self.manager, "_validate_file", return_value=rename), \
              patch.object(self.manager, "_file_states",
-                          side_effect=[{part.file_path: []}, {part.file_path: [100]}]), \
+                          side_effect=[{part.file_path: []}, {part.file_path: [100]},
+                                       {part.file_path: [100]}]), \
              patch.object(self.manager, "_restore", return_value=True), \
              patch("src.timestamp_repair._rename_symlink") as replace:
             def manifest_exists(*_):
@@ -122,6 +183,9 @@ class TimestampRepairTransactionTests(unittest.TestCase):
         self.assertFalse(self.manager.active_path.exists())
         history = json.loads(self.manager.history_path.read_text(encoding="utf-8"))
         self.assertEqual(history[0]["state"], "completed")
+        self.assertEqual(history[0]["timestamp_changes"], [{
+            "file_path": part.file_path, "before": -5, "after": 100,
+        }])
 
     def test_status_counts_only_completed_repaired_files(self):
         self.manager.history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -226,23 +290,39 @@ class TimestampRepairConfigTests(unittest.TestCase):
             "name": "Plex", "url": "http://plex", "libraries": [],
             "timestamp_repair": {"enabled": True},
         }]}
-        with self.assertRaisesRegex(ValueError, "database path and allowed"):
+        with self.assertRaisesRegex(ValueError, "database path and at least one repair folder"):
             app._validate_raw_config(raw)
 
 
 class TimestampRepairApiTests(unittest.TestCase):
+    def test_repair_ui_explains_scope_evidence_and_phases(self):
+        html = app.app.test_client().get("/").get_data(as_text=True)
+        self.assertIn("Repair movie folder", html)
+        self.assertIn("Repair season folder", html)
+        self.assertIn("Filesystem timestamp", html)
+        self.assertIn("Negative Plex part timestamp", html)
+        self.assertIn("underlying provider/NZBDAV object", html)
+        self.assertIn("Temporary rename", html)
+        self.assertIn("Second Plex scan", html)
+        self.assertIn("Excluded from automatic repair", html)
+
     def test_audit_enrichment_adds_complete_library_total(self):
         audit = {"libraries": [
             {"library_section_id": "1", "library": "Movies"},
             {"library_section_id": "2", "library": "TV Shows"},
         ]}
         plex = Mock()
+        plex.get_sections.return_value = [
+            {"id": "1", "type": "movie"},
+            {"id": "2", "type": "show"},
+        ]
         plex.get_library_item_count.side_effect = [1200, 3400]
 
         result = app._enrich_repair_audit(audit, plex)
 
         self.assertEqual(result["total_library_items"], 4600)
         self.assertEqual(result["libraries"][1]["total_items"], 3400)
+        self.assertEqual(result["libraries"][0]["type"], "movie")
 
     def test_audit_enrichment_avoids_partial_library_total(self):
         audit = {"libraries": [

@@ -8,6 +8,7 @@ from contextlib import closing
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from types import SimpleNamespace
 from typing import Callable, Optional
 
 from src.maintenance import lease, set_recovery_check
@@ -29,6 +30,9 @@ class AffectedPart:
     item_title: str = ""
     parent_title: str = ""
     grandparent_title: str = ""
+    filesystem_timestamp: Optional[float] = None
+    filesystem_timestamp_iso: str = ""
+    path_state: str = "repairable_timestamp"
 
 
 def _now() -> str:
@@ -131,7 +135,7 @@ class TimestampRepairManager:
         if not repair_config.database_path:
             raise ValueError("A read-only Plex database path is required")
         if not repair_config.allowed_prefixes:
-            raise ValueError("At least one timestamp repair path prefix is required")
+            raise ValueError("At least one folder Emptyarr may repair is required")
         query = """
             SELECT md.library_section_id, md.id, mi.id, mp.id, mp.file,
                    mp.updated_at, COALESCE(md.title, ''),
@@ -155,11 +159,31 @@ class TimestampRepairManager:
             path = str(row[4])
             if not any(_inside(path, prefix) for prefix in repair_config.allowed_prefixes):
                 continue
+            filesystem_timestamp = None
+            filesystem_timestamp_iso = ""
+            if not os.path.lexists(path):
+                path_state = "missing_path"
+            elif not os.path.islink(path):
+                path_state = "regular_file"
+            elif not os.path.exists(path):
+                path_state = "broken_symlink"
+            else:
+                try:
+                    filesystem_timestamp = os.stat(path).st_mtime
+                    filesystem_timestamp_iso = datetime.fromtimestamp(
+                        filesystem_timestamp, timezone.utc,
+                    ).isoformat()
+                    path_state = "repairable_timestamp"
+                except OSError:
+                    path_state = "broken_symlink"
             affected.append(AffectedPart(
                 library_section_id=str(row[0]), metadata_item_id=row[1],
                 media_item_id=row[2], media_part_id=row[3], file_path=path,
                 stored_timestamp=row[5], folder=os.path.dirname(path),
                 item_title=row[6], parent_title=row[7], grandparent_title=row[8],
+                filesystem_timestamp=filesystem_timestamp,
+                filesystem_timestamp_iso=filesystem_timestamp_iso,
+                path_state=path_state,
             ))
         if not deduplicate:
             return affected
@@ -191,7 +215,11 @@ class TimestampRepairManager:
 
     def audit(self, instance, repair_config, plex=None) -> dict:
         rows = self.detect(repair_config, deduplicate=False)
-        parts = list({part.file_path: part for part in rows}.values())
+        all_parts = list({part.file_path: part for part in rows}.values())
+        parts = [
+            part for part in all_parts
+            if part.path_state == "repairable_timestamp"
+        ]
         libraries = {}
         for library in instance.libraries:
             section_id = library.section_id
@@ -215,8 +243,22 @@ class TimestampRepairManager:
         folders = sorted(groups.values(), key=lambda item: (len(item["files"]), item["library"], item["folder"]))
         result = {
             "audited_at": _now(), "instance": instance.name,
+            "database_path": repair_config.database_path,
+            "allowed_prefixes": list(repair_config.allowed_prefixes),
             "negative_rows": len(rows), "distinct_files": len(parts),
+            "database_distinct_files": len(all_parts),
             "affected_folders": len(folders), "folders": folders,
+            "path_state_counts": {
+                state: sum(part.path_state == state for part in all_parts)
+                for state in (
+                    "repairable_timestamp", "missing_path",
+                    "broken_symlink", "regular_file",
+                )
+            },
+            "path_issues": [
+                asdict(part) for part in all_parts
+                if part.path_state != "repairable_timestamp"
+            ],
             "libraries": [
                 {"library_section_id": section_id, "library": name}
                 for section_id, name in libraries.items()
@@ -253,6 +295,28 @@ class TimestampRepairManager:
         with self._guard:
             runtime = dict(self._status)
         history = self._read_json(self.history_path, [])
+        audits = self._read_json(self.audit_path, {})
+        for audit in audits.values() if isinstance(audits, dict) else []:
+            database_path = str(audit.get("database_path", ""))
+            allowed_prefixes = list(audit.get("allowed_prefixes", []))
+            if not database_path or not allowed_prefixes:
+                continue
+            try:
+                live_parts = list({
+                    part.file_path: part
+                    for part in self.detect(SimpleNamespace(
+                        enabled=True,
+                        database_path=database_path,
+                        allowed_prefixes=allowed_prefixes,
+                    ), deduplicate=False)
+                }.values())
+                live_count = len(live_parts)
+                audit["live_database_distinct_files"] = live_count
+                audit["database_count_changed"] = (
+                    live_count != int(audit.get("database_distinct_files", live_count))
+                )
+            except (OSError, sqlite3.Error, ValueError):
+                pass
         repair_totals = {}
         for item in history:
             if item.get("state") != "completed":
@@ -264,7 +328,7 @@ class TimestampRepairManager:
         return {
             **runtime,
             "active_transaction": self.active_transaction(),
-            "audits": self._read_json(self.audit_path, {}),
+            "audits": audits,
             "history": history[:20],
             "repair_totals": repair_totals,
         }
@@ -421,7 +485,11 @@ class TimestampRepairManager:
                         raise RuntimeError(
                             "Safety checks failed: " + ", ".join(failed)
                         )
-                current = [part for part in self.detect(repair_config, resolved_section) if part.folder == folder]
+                current = [
+                    part for part in self.detect(repair_config, resolved_section)
+                    if part.folder == folder
+                    and part.path_state == "repairable_timestamp"
+                ]
                 if not current:
                     return self._failure("This folder no longer has negative timestamps")
                 current_files = {part.file_path for part in current}
@@ -435,12 +503,22 @@ class TimestampRepairManager:
                     "library": library.name, "library_section_id": resolved_section,
                     "folder": folder, "state": "prepared", "created_at": _now(),
                     "batch_position": "1/1", "renames": renames,
+                    "timestamp_changes": [
+                        {
+                            "file_path": part.file_path,
+                            "before": int(part.stored_timestamp),
+                            "after": None,
+                        }
+                        for part in current
+                    ],
                 }
                 self._write_active(transaction)
                 manifest_persisted = True
                 for rename in renames:
                     _rename_symlink(rename["original"], rename["temporary"])
                 transaction["state"] = "renamed"
+                self._write_active(transaction)
+                transaction["state"] = "first_plex_scan"
                 self._write_active(transaction)
                 scan = plex.scan_path(resolved_section, folder)
                 if not scan["ok"]:
@@ -460,6 +538,8 @@ class TimestampRepairManager:
                     raise RuntimeError("First folder scan timed out")
                 if not self._restore(transaction):
                     raise RuntimeError(transaction.get("error", "Automatic restore was incomplete"))
+                transaction["state"] = "second_plex_scan"
+                self._write_active(transaction)
                 scan = plex.scan_path(resolved_section, folder)
                 if not scan["ok"]:
                     raise RuntimeError(f"Second folder scan failed with HTTP {scan.get('http')}")
@@ -475,6 +555,12 @@ class TimestampRepairManager:
                 )
                 if not verified:
                     raise RuntimeError("Folder verification timed out")
+                verified_states = self._file_states(
+                    repair_config, resolved_section, originals,
+                )
+                for change in transaction["timestamp_changes"]:
+                    timestamps = verified_states.get(change["file_path"], [])
+                    change["after"] = min(timestamps) if timestamps else None
                 transaction["state"] = "completed"
                 transaction["completed_at"] = _now()
                 self._archive(transaction)

@@ -163,6 +163,7 @@ nav{
 /* ── PAGES ── */
 .page{display:none;width:min(var(--content-w),calc(100% - clamp(32px,5vw,96px)));margin:0 auto;padding:34px 0 48px;}
 .page.active{display:block;}
+[data-feature][hidden]{display:none!important;}
 
 /* ── CARDS ── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:13px;overflow:hidden;}
@@ -336,7 +337,7 @@ nav{
 .sdot.pass{background:var(--pass);}
 .sdot.fail{background:var(--fail);}
 
-.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:15px;}
+.lib-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
 .lib-card{
   background:linear-gradient(160deg,var(--surface),var(--bg2));
   border:1px solid var(--border);
@@ -344,6 +345,9 @@ nav{
   border-radius:12px;
   overflow:hidden;
   transition:border-color .2s,transform .2s,box-shadow .2s;
+  min-height:285px;
+  display:flex;
+  flex-direction:column;
 }
 .lib-card:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(0,0,0,.16);}
 .lib-card.success{border-top-color:var(--pass);}
@@ -354,10 +358,10 @@ nav{
 .lib-card.dry_run {border-top-color:var(--info);}
 .lib-card.idle    {border-top-color:var(--border2);}
 
-.lib-card-top{padding:16px 17px 13px;display:flex;align-items:center;justify-content:space-between;}
+.lib-card-top{padding:22px 23px 18px;display:flex;align-items:center;justify-content:space-between;}
 .lib-identity{display:flex;align-items:center;gap:11px;}
 .library-glyph{width:35px;height:35px;border-radius:10px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent2);font-size:17px;border:1px solid var(--accent-line);}
-.lib-card-name{font-size:16px;font-weight:700;color:var(--bright);}
+.lib-card-name{font-size:21px;font-weight:750;color:var(--bright);}
 .type-chip{
   font-family:var(--mono);
   font-size:10px;
@@ -373,7 +377,7 @@ nav{
 .type-chip.usenet  {color:var(--info2);}
 .type-chip.mixed   {color:var(--warn2);}
 
-.lib-state-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 17px;border-top:1px solid var(--border);}
+.lib-state-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 23px;border-top:1px solid var(--border);}
 .lib-state{display:flex;align-items:center;gap:9px;}
 .lib-state-dot{width:9px;height:9px;border-radius:50%;background:var(--muted);}
 .lib-state-dot.pass{background:var(--pass);}
@@ -382,8 +386,8 @@ nav{
 .lib-state-dot.info{background:var(--info);}
 .lib-state-text{font-size:14px;font-weight:750;color:var(--bright);text-transform:capitalize;}
 .lib-stats-row{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border);border-top:1px solid var(--border);}
-.lib-stat{background:var(--surface);padding:13px 11px;text-align:center;}
-.lib-stat-val{font-family:var(--mono);font-size:22px;font-weight:750;color:var(--bright);line-height:1;}
+.lib-stat{background:var(--surface);padding:19px 13px;text-align:center;}
+.lib-stat-val{font-family:var(--mono);font-size:30px;font-weight:750;color:var(--bright);line-height:1;}
 .lib-stat-val.pass {color:var(--pass);}
 .lib-stat-val.fail {color:var(--fail2);}
 .lib-stat-val.warn {color:var(--warn2);}
@@ -391,12 +395,13 @@ nav{
 .lib-stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-top:5px;}
 
 .lib-card-footer{
-  padding:12px 14px;
+  padding:16px 20px;
   display:flex;
   align-items:center;
   justify-content:space-between;
   border-top:1px solid var(--border);
   background:var(--bg2);
+  margin-top:auto;
 }
 .lib-card-ts{font-size:12px;color:var(--muted);}
 .lib-card-ts b{color:var(--text2);}
@@ -467,15 +472,15 @@ table.htable{width:100%;border-collapse:collapse;}
 .empty-msg{text-align:center;padding:20px;color:var(--muted);font-size:14px;}
 
 /* ── SETTINGS PAGE ── */
-.settings-layout{display:grid;grid-template-columns:250px minmax(0,1fr);gap:30px;}
+.settings-layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:34px;}
 .settings-nav{display:flex;flex-direction:column;gap:2px;}
 .settings-nav-item{
   display:flex;
   align-items:center;
   gap:8px;
-  padding:11px 14px;
+  padding:15px 17px;
   border-radius:9px;
-  font-size:14px;
+  font-size:17px;
   font-weight:500;
   color:var(--text2);
   cursor:pointer;
@@ -729,6 +734,7 @@ dialog.overlay::backdrop{background:transparent;}
 .repair-instance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:stretch;}
 .repair-instance-card{display:flex;flex-direction:column;min-height:510px;background:linear-gradient(155deg,var(--surface),var(--bg2));border:1px solid var(--border);border-top:4px solid var(--accent);border-radius:13px;padding:26px;box-shadow:0 18px 50px rgba(0,0,0,.12);}
 .repair-instance-card.not-ready{border-top-color:var(--warn);}
+.repair-instance-card.repair-collapsed{min-height:0;}.repair-overview-body{display:flex;flex:1;flex-direction:column;}.repair-collapsed .repair-overview-body{display:none;}.repair-instance-head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}
 .repair-instance-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:25px;}
 .repair-instance-kind{font:700 11px/1 var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--accent2);margin-bottom:10px;}
 .repair-instance-name{font-size:25px;line-height:1.15;font-weight:780;color:var(--bright);letter-spacing:-.5px;overflow-wrap:anywhere;}
@@ -769,9 +775,16 @@ dialog.overlay::backdrop{background:transparent;}
 .repair-folder-subtitle{font-size:14px;color:var(--text2);}
 .repair-files{margin:18px 0;max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,.08);}
 .repair-file{padding:13px 15px;border-bottom:1px solid var(--border);font-size:14px;word-break:break-word;}
+.repair-change{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:14px;margin-top:13px;padding:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);}
+.repair-change span{display:block;font-size:14px;color:var(--muted);margin-bottom:4px;}.repair-change strong{display:block;font-size:16px;}.repair-change .bad{color:var(--warn2);}.repair-change .good{color:var(--pass2);}.repair-change-arrow{font-size:22px;color:var(--accent2);}
 .repair-file:last-child{border-bottom:0;}
 .repair-file-path{color:var(--muted);font:500 12px/1.5 var(--mono);margin-top:4px;}
 .repair-folder-footer{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:4px;}
+.repair-progress{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:16px;}
+.repair-progress-step{padding:9px 6px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--muted);font-size:12px;text-align:center;}
+.repair-progress-step.done{border-color:var(--pass-line);color:var(--pass2);background:var(--pass-soft);}
+.repair-progress-step.current{border-color:var(--warn-line);color:var(--warn2);background:var(--warn-soft);}
+.repair-path-issue{border-top-color:var(--fail);min-height:0;}
 .metadata-audit-card{min-height:0;}
 .metadata-card-body{display:none;}
 .metadata-audit-card.expanded .metadata-card-body{display:block;}
@@ -799,20 +812,30 @@ dialog.overlay::backdrop{background:transparent;}
 .rollup-metrics{display:flex;gap:24px;margin:23px 0;}
 .rollup-metric strong{display:block;font:750 28px/1 var(--mono);color:var(--bright);}.rollup-metric span{display:block;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:7px;}
 .rollup-card .btn{margin-top:auto;align-self:flex-start;}
-.metadata-settings-list{display:grid;gap:12px;margin-top:16px;}
-.metadata-setting-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;border:1px solid var(--border);border-radius:9px;background:var(--bg);}
+.metadata-settings-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:16px;}
+.schedule-label{font-size:15px;color:var(--text2);font-weight:600;}
+.metadata-setting-row{display:flex;min-height:145px;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:18px;padding:18px;border:1px solid var(--border);border-radius:11px;background:var(--bg);}
 .metadata-setting-row strong{font-size:16px;color:var(--bright);}.metadata-setting-row span{font-size:14px;color:var(--text2);}
-.page .overview-label{font-size:12px;}.page .protection-copy{font-size:15px;}.page .legend-item{font-size:14px;}.page .text-link{font-size:14px;}
-.page .activity-instance,.page .activity-time,.page .run-detail-time,.page .run-detail-empty{font-size:14px;}
-.page .instance-meta{font-size:12px;}.page .instance-url,.page .plex-status-pill{font-size:13px;}
-.page .lib-stat-label{font-size:12px;}.page .lib-card-ts,.page .lib-card-footer{font-size:14px;}
-.page .badge,.page .inst-chip,.page .lib-chip,.page .expand-section-title{font-size:13px;}
-.page .form-label{font-size:14px;}.page .form-hint{font-size:14px;}.page .lib-settings-name{font-size:16px;}
-.page .path-item-path{font-size:13px;}.page .path-item-min{font-size:12px;}.page .empty-msg{font-size:15px;}
-.page .repair-library-meta,.page .repair-history-meta,.page .repair-status-pill{font-size:15px;}
-.page .metadata-item-key{font-size:13px;}.page .metadata-item-title{font-size:17px;}.page .metadata-library-summary span{font-size:13px;}
-.page [style*="font-size:10px"],.page [style*="font-size:11px"],.page [style*="font-size:12px"]{font-size:14px!important;}
-.sched-label{font-size:14px;}
+.metadata-setting-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border2);border-radius:999px;padding:8px 11px;background:var(--surface2);color:var(--pass2);font-size:14px;font-weight:700;cursor:pointer;}
+.metadata-setting-toggle.ignored{color:var(--warn2);border-color:var(--warn-line);background:var(--warn-soft);}
+@media(max-width:1150px){.lib-grid{grid-template-columns:1fr;}}
+.page .overview-label{font-size:15px;}.page .protection-copy{font-size:17px;}.page .legend-item{font-size:16px;}.page .text-link{font-size:16px;}
+.page .activity-instance,.page .activity-time,.page .run-detail-time,.page .run-detail-empty{font-size:16px;}
+.page .instance-meta{font-size:15px;}.page .instance-url,.page .plex-status-pill{font-size:16px;}
+.page .lib-stat-label{font-size:15px;}.page .lib-card-ts,.page .lib-card-footer{font-size:16px;}
+.page .badge,.page .inst-chip,.page .lib-chip,.page .expand-section-title{font-size:15px;}
+.page .form-label{font-size:16px;}.page .form-hint{font-size:16px;line-height:1.55;}.page .form-input{font-size:17px;}.page .lib-settings-name{font-size:18px;}
+.page .path-item-path{font-size:16px;}.page .path-item-min{font-size:15px;}.page .empty-msg{font-size:17px;}
+.page .repair-library-meta,.page .repair-history-meta,.page .repair-status-pill{font-size:17px;}
+.page .repair-metric-label,.page .repair-instance-kind,.page .repair-library-panel-head{font-size:14px;}
+.page .repair-instance-footnote{font-size:15px;}.page .repair-library-name,.page .repair-history-title{font-size:17px;}
+.page .metadata-item-key{font-size:16px;}.page .metadata-item-title{font-size:19px;}.page .metadata-library-summary span{font-size:16px;}
+.page .card-title{font-size:18px;}.page .dashboard-subtitle,.page .settings-section-desc,.page .repair-warning{font-size:17px;}
+.page [style*="font-size:9px"],.page [style*="font-size:10px"],.page [style*="font-size:11px"],.page [style*="font-size:12px"],.page [style*="font-size:13px"]{font-size:16px!important;}
+.sched-label{font-size:16px;}
+.repair-db-options{display:grid;gap:10px;margin-top:12px;}
+.repair-db-option{width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 15px;text-align:left;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--bright);font-size:16px;cursor:pointer;overflow-wrap:anywhere;}
+.repair-db-option:hover{border-color:var(--accent);background:var(--accent-faint);}.repair-db-option span{color:var(--accent2);font-weight:700;white-space:nowrap;}
 @media(max-width:1050px){.rollup-grid{grid-template-columns:1fr;}.rollup-card{min-height:235px;}}
 @media(max-width:1180px){.repair-instance-grid,.repair-folder-grid{grid-template-columns:1fr;}}
 @media(max-width:700px){
@@ -822,6 +845,8 @@ dialog.overlay::backdrop{background:transparent;}
   .repair-metric{padding:4px 8px;}.repair-metric-label{font-size:9px;letter-spacing:1px;}.repair-metric-value{font-size:27px;}
   .repair-library-row{grid-template-columns:minmax(0,1fr) auto;}.repair-library-row .btn{grid-column:1/-1;width:100%;}
   .repair-instance-actions{width:100%;}.repair-instance-actions .btn{flex:1;}
+  .repair-change{grid-template-columns:1fr;}.repair-change-arrow{transform:rotate(90deg);justify-self:center;}
+  .repair-progress{grid-template-columns:1fr;}.repair-progress-step{text-align:left;}
   .repair-history-list{grid-template-columns:1fr;}
 }
 </style>
@@ -838,13 +863,13 @@ dialog.overlay::backdrop{background:transparent;}
     <button class="nav-link active" onclick="showPage('dashboard',this)" id="nav-dashboard">
       Dashboard
     </button>
-    <button class="nav-link" onclick="showPage('emptyarr',this)" id="nav-emptyarr">
+    <button class="nav-link" data-feature="trash_removal" onclick="showPage('emptyarr',this)" id="nav-emptyarr">
       Emptyarr
     </button>
-    <button class="nav-link" onclick="showPage('metadata-audit',this)" id="nav-metadata-health">
+    <button class="nav-link" data-feature="metadata_health" onclick="showPage('metadata-audit',this)" id="nav-metadata-health">
       Metadata Health
     </button>
-    <button class="nav-link" onclick="showPage('timestamp-repair',this)" id="nav-timestamp-repair">
+    <button class="nav-link" data-feature="timestamp_repair" onclick="showPage('timestamp-repair',this)" id="nav-timestamp-repair">
       Timestamp Repair
     </button>
     <button class="nav-link" onclick="showPage('settings',this)" id="nav-settings">
@@ -881,25 +906,25 @@ dialog.overlay::backdrop{background:transparent;}
   </div>
   {% else %}
   <div class="dashboard-intro">
-    <div><div class="eyebrow">System overview</div><h1 class="dashboard-title">Your media health at a glance</h1><div class="dashboard-subtitle">Live status across protection, Plex metadata, and manual maintenance.</div></div>
+    <div><div class="eyebrow">System overview</div><h1 class="dashboard-title">Your media health at a glance</h1><div class="dashboard-subtitle">Current status for the features you have enabled.</div></div>
   </div>
-  <div class="startup-progress" id="dashboard-startup-progress"><span class="spin"></span><span>Starting read-only safety checks…</span></div>
+  <div class="startup-progress" data-feature="trash_removal" id="dashboard-startup-progress"><span class="spin"></span><span>Starting read-only safety checks…</span></div>
   <div class="rollup-grid">
-    <section class="rollup-card" id="rollup-emptyarr">
+    <section class="rollup-card" data-feature="trash_removal" id="rollup-emptyarr">
       <div class="rollup-kicker">Automated protection</div><div class="rollup-title">Emptyarr</div>
       <div class="rollup-status" id="rollup-emptyarr-status">Checking libraries…</div>
       <div class="rollup-copy" id="rollup-emptyarr-copy">Loading current Plex, mount, provider, and file-threshold health.</div>
       <div class="rollup-metrics"><div class="rollup-metric"><strong id="rollup-protected">0</strong><span>Healthy</span></div><div class="rollup-metric"><strong id="rollup-protection-attention">0</strong><span>Attention</span></div></div>
       <button class="btn btn-primary" onclick="showPage('emptyarr',document.getElementById('nav-emptyarr'))">Open Emptyarr</button>
     </section>
-    <section class="rollup-card" id="rollup-metadata">
+    <section class="rollup-card" data-feature="metadata_health" id="rollup-metadata">
       <div class="rollup-kicker">Plex matching</div><div class="rollup-title">Metadata Health</div>
       <div class="rollup-status" id="rollup-metadata-status">No scan loaded</div>
       <div class="rollup-copy" id="rollup-metadata-copy">Find movies and shows that still need a Plex metadata match.</div>
       <div class="rollup-metrics"><div class="rollup-metric"><strong id="rollup-unmatched">0</strong><span>Unmatched</span></div><div class="rollup-metric"><strong id="rollup-scanned">0</strong><span>Items scanned</span></div></div>
       <button class="btn btn-primary" onclick="showPage('metadata-audit',document.getElementById('nav-metadata-health'))">Open Metadata Health</button>
     </section>
-    <section class="rollup-card" id="rollup-repair">
+    <section class="rollup-card" data-feature="timestamp_repair" id="rollup-repair">
       <div class="rollup-kicker">Manual maintenance</div><div class="rollup-title">Timestamp Repair</div>
       <div class="rollup-status" id="rollup-repair-status">Loading repair status…</div>
       <div class="rollup-copy" id="rollup-repair-copy">Review malformed Plex timestamps and repair explicitly approved folders.</div>
@@ -911,7 +936,7 @@ dialog.overlay::backdrop{background:transparent;}
 </div>
 
 <!-- ── EMPTYARR PROTECTION PAGE ── -->
-<div class="page" id="page-emptyarr">
+<div class="page" data-feature="trash_removal" id="page-emptyarr">
   {% if not config_missing %}
   <div class="dashboard-intro">
     <div>
@@ -1043,9 +1068,10 @@ dialog.overlay::backdrop{background:transparent;}
           </div>
         </div>
         <div class="lib-card-footer">
-          <span style="font-size:11px;color:var(--muted);font-family:var(--mono);"
+          <span class="schedule-label" data-schedule-cron="{{ lib.effective_cron|e }}"
+                data-schedule-global="{{ 'true' if lib.uses_global_schedule else 'false' }}"
                 title="{{ 'Uses global schedule' if lib.uses_global_schedule else 'Per-library override' }}">
-            {{ 'global · ' if lib.uses_global_schedule else '' }}{{ lib.effective_cron }}
+            Loading schedule&hellip;
           </span>
           <div class="lib-card-actions">
             <button class="btn btn-secondary btn-sm" title="Dry run"
@@ -1066,21 +1092,21 @@ dialog.overlay::backdrop{background:transparent;}
 </div>
 
 <!-- ── METADATA HEALTH PAGE ── -->
-<div class="page" id="page-metadata-audit">
+<div class="page" data-feature="metadata_health" id="page-metadata-audit">
   <div class="repair-page-head">
     <div>
       <div class="eyebrow">Plex metadata health</div>
       <h1 class="dashboard-title">Metadata Health</h1>
       <div class="dashboard-subtitle">Find movies and shows Plex has not matched to a real metadata source, then open each item directly in Plex.</div>
     </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-secondary" onclick="openMetadataHealthSettings()">Settings</button><button class="btn btn-secondary" onclick="loadMetadataAuditStatus()">&#8635;&nbsp; Refresh results</button><button class="btn btn-primary" id="metadata-scan-all" onclick="scanAllMetadata(this)">Scan all servers</button></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-secondary" onclick="openMetadataHealthSettings()">Settings</button><button class="btn btn-secondary" onclick="collapseAllMetadata()">Collapse all</button><button class="btn btn-secondary" onclick="loadMetadataAuditStatus()">&#8635;&nbsp; Refresh results</button><button class="btn btn-primary" id="metadata-scan-all" onclick="scanAllMetadata(this)">Scan all servers</button></div>
   </div>
   <div class="repair-warning" style="border-color:var(--accent-line);background:var(--accent-faint);color:var(--text2);">This scan is read-only. It does not scan files, change Plex metadata, or affect Empty Trash safety decisions. Libraries excluded in Metadata Health settings are skipped.</div>
-  <div class="repair-section-heading"><h2 class="repair-section-title">Plex instances</h2><div class="repair-section-line"></div></div>
+  <div class="repair-section-heading"><h2 class="repair-section-title" id="metadata-section-title">Plex servers</h2><div class="repair-section-line"></div></div>
   <div class="repair-instance-grid" id="metadata-audit-grid"><div class="empty-msg">Loading saved metadata audits&hellip;</div></div>
 </div>
 
-<div class="page" id="page-timestamp-repair">
+<div class="page" data-feature="timestamp_repair" id="page-timestamp-repair">
   <div id="repair-overview">
     <div class="repair-page-head">
       <div>
@@ -1088,7 +1114,7 @@ dialog.overlay::backdrop{background:transparent;}
         <h1 class="dashboard-title">Timestamp repair</h1>
         <div class="dashboard-subtitle">Find invalid Plex part timestamps and repair one reviewed movie or season folder at a time.</div>
       </div>
-      <button class="btn btn-secondary" onclick="loadRepairStatus()">&#8635;&nbsp; Refresh status</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-secondary" onclick="setAllRepairDetails(true)">Expand all</button><button class="btn btn-secondary" onclick="setAllRepairDetails(false)">Collapse all</button><button class="btn btn-secondary" onclick="loadRepairStatus()">&#8635;&nbsp; Refresh status</button></div>
     </div>
     <div class="repair-warning">Timestamp repair is manual only. Empty Trash is locked out while a repair or recovery transaction is active.</div>
     <div id="repair-active"></div>
@@ -1146,10 +1172,16 @@ dialog.overlay::backdrop{background:transparent;}
         <button class="settings-nav-item active" onclick="showSettingsSection('plex',this)">
           📺 Plex Instances
         </button>
-        <button class="settings-nav-item" onclick="showSettingsSection('metadata-health',this)">
-          Metadata Health
+        <button class="settings-nav-item" data-feature="trash_removal" onclick="showSettingsSection('trash-removal',this)">
+          🗑️ Trash Removal
         </button>
-        <button class="settings-nav-item" onclick="showSettingsSection('timestamp-repair',this)">
+        <button class="settings-nav-item" onclick="showSettingsSection('features',this)">
+          🎛️ Features
+        </button>
+        <button class="settings-nav-item" data-feature="metadata_health" onclick="showSettingsSection('metadata-health',this)">
+          🔎 Metadata Health
+        </button>
+        <button class="settings-nav-item" data-feature="timestamp_repair" onclick="showSettingsSection('timestamp-repair',this)">
           🛠️ Timestamp Repair
         </button>
         <button class="settings-nav-item" onclick="showSettingsSection('providers',this)">
@@ -1174,7 +1206,27 @@ dialog.overlay::backdrop{background:transparent;}
       <!-- Plex Instances -->
       <div class="settings-section active" id="ss-plex">
         <div class="settings-section-title">Plex Instances</div>
-        <div class="settings-section-desc">Manage Plex instances and libraries. Saved changes are applied immediately.</div>
+        <div class="settings-section-desc">Connect and manage Plex servers. Library behavior is configured separately for each feature.</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+          <button class="btn btn-primary" onclick="connectPlexAccount('settings')">Connect Plex Account</button>
+          <span style="font-size:11px;color:var(--muted);">Discover Plex servers through sign-in</span>
+        </div>
+        <div id="plex-discovery-settings" style="margin-bottom:16px;"></div>
+        <div id="settings-instances-list"><div class="empty-msg" style="padding:20px 0;">Loading&hellip;</div></div>
+        <button class="btn btn-secondary" onclick="settingsAddInstance()">+ Add Plex Instance</button>
+        <hr class="divider"/>
+        <button class="btn btn-primary" onclick="settingsSave('plex')" id="settings-save-btn">💾 Save Plex Settings</button>
+        <span id="settings-save-result" style="margin-left:12px;font-size:12px;"></span>
+      </div>
+
+      <!-- Trash Removal -->
+      <div class="settings-section" id="ss-trash-removal">
+        <div class="settings-section-title">Trash Removal</div>
+        <div class="settings-section-desc">Choose a Plex server, then configure its monitored libraries, safety paths, checks, and automatic schedule.</div>
+        <div class="form-group" style="max-width:520px;">
+          <label class="form-label" for="trash-settings-instance">Plex instance</label>
+          <select class="form-input" id="trash-settings-instance" onchange="renderTrashRemovalSettings(Number(this.value))"></select>
+        </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-header">
             <span class="card-title">Global schedule</span>
@@ -1190,12 +1242,17 @@ dialog.overlay::backdrop{background:transparent;}
                   <option value="0 */2 * * *">Every 2 hours</option>
                   <option value="0 */6 * * *">Every 6 hours</option>
                   <option value="daily">Daily at a specific time</option>
-                  <option value="custom">Custom cron from config.yml</option>
+                  <option value="custom">Custom schedule</option>
                 </select>
               </div>
               <div class="form-group" id="s-global-time-group" style="margin-bottom:0;display:none;">
                 <label class="form-label" for="s-global-run-at">Run daily at</label>
                 <input class="form-input" type="time" id="s-global-run-at" value="02:00" onchange="globalRunAtChanged()" />
+              </div>
+              <div class="form-group" id="s-global-custom-group" style="margin-bottom:0;display:none;">
+                <label class="form-label" for="s-global-custom-cron">Custom cron expression</label>
+                <input class="form-input" id="s-global-custom-cron" placeholder="0 3 * * *" onchange="globalCustomCronChanged()" />
+                <div class="form-hint">Advanced: minute, hour, day, month, weekday.</div>
               </div>
             </div>
             <div class="form-hint" id="s-global-schedule-summary" style="margin-top:10px;"></div>
@@ -1207,20 +1264,22 @@ dialog.overlay::backdrop{background:transparent;}
             </div>
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
-          <button class="btn btn-primary" onclick="connectPlexAccount('settings')">Connect Plex Account</button>
-          <span style="font-size:11px;color:var(--muted);">Discover servers and libraries through Plex sign-in</span>
-        </div>
-        <div id="plex-discovery-settings" style="margin-bottom:16px;"></div>
-        <div id="settings-instances-list">
-          <div class="empty-msg" style="padding:20px 0;">Loading…</div>
-        </div>
-        <button class="btn btn-secondary" onclick="settingsAddInstance()">+ Add Instance</button>
+        <div id="trash-settings-libraries"></div>
         <hr class="divider"/>
-        <button class="btn btn-primary" onclick="settingsSave()" id="settings-save-btn">
-          💾 Save Configuration
-        </button>
-        <span id="settings-save-result" style="margin-left:12px;font-size:12px;"></span>
+        <button class="btn btn-primary" onclick="settingsSave('trash-removal')" id="settings-save-btn-trash">💾 Save Trash Removal Settings</button>
+        <span id="settings-save-result-trash" style="margin-left:12px;font-size:12px;"></span>
+      </div>
+
+      <!-- Features -->
+      <div class="settings-section" id="ss-features">
+        <div class="settings-section-title">Features</div>
+        <div class="settings-section-desc">Show and run only the functionality you use. Disabled features disappear from navigation, settings, and the dashboard.</div>
+        <div class="metadata-settings-list">
+          <div class="metadata-setting-row"><div><strong>Trash Removal</strong><br><span>Protected Plex Empty Trash scheduling and manual runs.</span></div><button type="button" class="metadata-setting-toggle" id="feature-trash-removal" onclick="toggleFeatureSetting('trash_removal')"></button></div>
+          <div class="metadata-setting-row"><div><strong>Metadata Health</strong><br><span>Manual checks for unmatched Plex movies and shows.</span></div><button type="button" class="metadata-setting-toggle" id="feature-metadata-health" onclick="toggleFeatureSetting('metadata_health')"></button></div>
+          <div class="metadata-setting-row"><div><strong>Timestamp Repair</strong><br><span>Manual repair of invalid Plex media-part timestamps.</span></div><button type="button" class="metadata-setting-toggle" id="feature-timestamp-repair" onclick="toggleFeatureSetting('timestamp_repair')"></button></div>
+        </div>
+        <div style="margin-top:18px;"><button class="btn btn-primary" onclick="settingsSave('features')" id="settings-save-btn-features">Save Feature Settings</button><span id="settings-save-result-features" style="margin-left:12px;"></span></div>
       </div>
 
       <!-- Metadata Health -->
@@ -1229,7 +1288,7 @@ dialog.overlay::backdrop{background:transparent;}
         <div class="settings-section-desc">Exclude libraries that intentionally use local-only metadata, such as YouTube libraries. Excluded libraries are never requested during a metadata scan.</div>
         <div class="repair-warning" style="border-color:var(--accent-line);background:var(--accent-faint);color:var(--text2);">Movie and TV libraries are included by default. Check <strong>Ignore</strong> only when local metadata is expected and a Plex match would not be useful.</div>
         <div id="metadata-health-settings"></div>
-        <div style="margin-top:18px;"><button class="btn btn-primary" onclick="settingsSave()" id="settings-save-btn-metadata">Save Metadata Health Settings</button><span id="settings-save-result-metadata" style="margin-left:12px;font-size:14px;"></span></div>
+        <div style="margin-top:18px;"><button class="btn btn-primary" onclick="settingsSave('metadata-health')" id="settings-save-btn-metadata">Save Metadata Health Settings</button><span id="settings-save-result-metadata" style="margin-left:12px;font-size:14px;"></span></div>
       </div>
 
       <!-- Timestamp Repair -->
@@ -1237,7 +1296,7 @@ dialog.overlay::backdrop{background:transparent;}
         <div class="settings-section-title">Timestamp Repair</div>
         <div class="settings-section-desc">Configure local Plex databases or pair one repair-only worker. Empty Trash remains controlled by this main Emptyarr instance.</div>
         <div class="repair-warning">
-          Docker mounts cannot be created from inside Emptyarr. Add each Plex database directory read-only and only the narrow symlink prefixes you approve read/write, then use Discover databases below.
+          Docker mounts cannot be created from inside Emptyarr. Add each Plex database directory read-only and only the specific symlink folders you approve read/write, then use Discover databases below.
           <details style="margin-top:10px;color:var(--text2);"><summary style="cursor:pointer;color:var(--warn2);font-weight:650;">How do I find the Plex database directory on Unraid?</summary><div style="margin-top:8px;line-height:1.6;">Open the Plex container&rsquo;s edit screen and note its host appdata path. Inside that appdata directory, the required folder ends with <code>Library/Application Support/Plex Media Server/Plug-in Support/Databases</code>. Map that exact directory read-only to a distinct path such as <code>/plex-db/streamstead</code>. The Discover button finds the database file after the container is recreated.</div></details>
         </div>
         <div class="card" style="margin-bottom:18px;">
@@ -1245,10 +1304,13 @@ dialog.overlay::backdrop{background:transparent;}
             <div><div class="card-title">Remote repair workers</div><div class="form-hint">Only needed for a Plex server on another machine, such as vm-altmount.</div></div>
             <button class="btn btn-secondary btn-sm" type="button" onclick="addRepairWorker()">+ Add worker</button>
           </div>
-          <div class="card-body" id="repair-workers-settings"></div>
+          <div class="card-body">
+            <div class="repair-warning" style="margin:0 0 16px;"><strong>Remote setup:</strong> 1. Add a worker &nbsp;&rarr;&nbsp; 2. Assign its Plex server and configure paths &nbsp;&rarr;&nbsp; 3. Copy Compose.</div>
+            <div id="repair-workers-settings"></div>
+          </div>
         </div>
         <div id="repair-instances-settings"></div>
-        <button class="btn btn-primary" onclick="settingsSave()" id="settings-save-btn-repair">💾 Save Timestamp Repair Setup</button>
+        <button class="btn btn-primary" onclick="settingsSave('timestamp-repair')" id="settings-save-btn-repair">💾 Save Timestamp Repair Setup</button>
         <span id="settings-save-result-repair" style="margin-left:12px;font-size:13px;"></span>
       </div>
 
@@ -1709,18 +1771,39 @@ window.fetch = function(input, init = {}) {
 };
 const _instances = {{ instances | tojson }};
 const _configMissing = {{ 'true' if config_missing else 'false' }};
+let _activeFeatures = {
+  trash_removal: {{ 'true' if config.features.trash_removal else 'false' }},
+  metadata_health: {{ 'true' if config.features.metadata_health else 'false' }},
+  timestamp_repair: {{ 'true' if config.features.timestamp_repair else 'false' }},
+};
 let _history = [], _filter = 'all', _expanded = new Set();
+
+function applyFeatureVisibility(features = _activeFeatures) {
+  _activeFeatures = {..._activeFeatures, ...features};
+  document.querySelectorAll('[data-feature]').forEach(element => {
+    element.hidden = _activeFeatures[element.dataset.feature] === false;
+  });
+}
 
 // ── Page routing ─────────────────────────────────────────────────────────────
 function showPage(name, btn) {
+  const target = document.getElementById(`page-${name}`);
+  if (!target || (target.dataset.feature && _activeFeatures[target.dataset.feature] === false)) {
+    name = 'dashboard';
+    btn = document.getElementById('nav-dashboard');
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
   document.getElementById(`page-${name}`).classList.add('active');
   if (btn) btn.classList.add('active');
   if (name === 'history') { fetchHistory(); }
-  if (name === 'timestamp-repair') { loadRepairStatus(); }
-  if (name === 'metadata-audit') { loadMetadataAuditStatus(); }
-  if (name === 'dashboard') { loadMetadataAuditStatus(); loadRepairStatus(); fetchStatus(); }
+  if (name === 'timestamp-repair' && _activeFeatures.timestamp_repair) { loadRepairStatus(); }
+  if (name === 'metadata-audit' && _activeFeatures.metadata_health) { loadMetadataAuditStatus(); }
+  if (name === 'dashboard') {
+    if (_activeFeatures.metadata_health) loadMetadataAuditStatus();
+    if (_activeFeatures.timestamp_repair) loadRepairStatus();
+    if (_activeFeatures.trash_removal) fetchStatus();
+  }
   if (name === 'settings') { loadSettings(); }
   if (name !== 'settings') { stopLogViewer(); }
 }
@@ -1744,6 +1827,17 @@ async function loadMetadataAuditStatus() {
 function renderMetadataAudits(status) {
   const grid = document.getElementById('metadata-audit-grid');
   if (!grid) return;
+  const heading = document.getElementById('metadata-section-title');
+  const scanAll = document.getElementById('metadata-scan-all');
+  if (scanAll && !scanAll.disabled) scanAll.textContent = (status.instances || []).length === 1 ? 'Scan server' : 'Scan all servers';
+  if ((status.instances || []).length === 1) {
+    const instanceName = status.instances[0];
+    if (heading) heading.textContent = `Libraries on ${instanceName}`;
+    grid.innerHTML = renderSingleServerMetadata(status, instanceName);
+    bindMetadataControls(grid);
+    return;
+  }
+  if (heading) heading.textContent = 'Plex servers';
   grid.innerHTML = (status.instances || []).map(instanceName => {
     const audit = status.audits?.[instanceName];
     const ignoredNames = status.ignored_libraries?.[instanceName] || [];
@@ -1761,7 +1855,7 @@ function renderMetadataAudits(status) {
     const needsAttention = !audit || unmatched > 0 || errors > 0;
     const statusLabel = !audit ? 'Not scanned' : errors ? `${errors} scan error${errors===1?'':'s'}` : unmatched ? `${unmatched} need attention` : 'All matched';
     return `<section class="repair-instance-card metadata-audit-card ${needsAttention?'not-ready':''} ${expanded?'expanded':''}">
-      <div class="repair-instance-head"><div><div class="repair-instance-kind">Plex server</div><div class="repair-instance-name">${h(instanceName)}</div></div><div class="repair-status-pill ${needsAttention?'warn':''}"><span class="repair-status-dot"></span>${statusLabel}</div></div>
+      <div class="repair-instance-head"><div class="repair-instance-name">${h(instanceName)}</div><div class="repair-status-pill ${needsAttention?'warn':''}"><span class="repair-status-dot"></span>${statusLabel}</div></div>
       <div class="repair-metrics">
         <div class="repair-metric"><div class="repair-metric-label">Unmatched</div><div class="repair-metric-value affected">${unmatched.toLocaleString()}</div></div>
         <div class="repair-metric"><div class="repair-metric-label">Items scanned</div><div class="repair-metric-value">${total!=null?Number(total).toLocaleString():'\u2014'}</div></div>
@@ -1771,13 +1865,51 @@ function renderMetadataAudits(status) {
       <div class="repair-instance-footer"><div class="repair-instance-footnote">${audit?`Last scanned ${h(fmtAgo(audit.audited_at))}`:'No saved results yet'}${ignoredNames.length?`<br>${ignoredNames.length} librar${ignoredNames.length===1?'y':'ies'} ignored`:''}<br>${audit?.machine_id?'Direct Plex links available':'Rating keys will be shown if no machine identifier is available'}</div><div class="repair-instance-actions"><button class="btn btn-secondary metadata-collapse" data-metadata-toggle="${h(instanceName)}">${expanded?'Hide details':'Show details'}</button><button class="btn btn-primary" data-metadata-audit-instance="${h(instanceName)}">Scan now</button></div></div>
     </section>`;
   }).join('') || '<div class="empty-msg">No Plex instances are configured.</div>';
+  bindMetadataControls(grid);
+}
+
+function bindMetadataControls(grid) {
   grid.querySelectorAll('[data-metadata-audit-instance]').forEach(button => button.addEventListener('click', () => runMetadataAudit(button.dataset.metadataAuditInstance, button)));
   grid.querySelectorAll('[data-metadata-toggle]').forEach(button => button.addEventListener('click', () => toggleMetadataDetails(button.dataset.metadataToggle)));
+}
+
+function renderSingleServerMetadata(status, instanceName) {
+  const audit = status.audits?.[instanceName];
+  const ignored = new Set((status.ignored_libraries?.[instanceName] || []).map(name => String(name).toLocaleLowerCase()));
+  const audited = new Map((audit?.libraries || []).map(library => [String(library.name).toLocaleLowerCase(), library]));
+  const libraries = (status.libraries?.[instanceName] || []).filter(library => !ignored.has(String(library.name).toLocaleLowerCase())).map(library => ({...library, ...(audited.get(String(library.name).toLocaleLowerCase()) || {}), scanned:audited.has(String(library.name).toLocaleLowerCase())}));
+  if (!libraries.length) return `<div class="empty-msg">${audit?'Every library is ignored or unsupported.':'Run the first metadata scan to load library results.'}</div>`;
+  return libraries.map(library => {
+    const key = `${instanceName}::${library.name}`;
+    const expanded = _metadataExpanded.has(key);
+    const unmatched = Number(library.unmatched_count || 0);
+    const items = (library.items || []).map(item => `<div class="metadata-item"><div><div class="metadata-item-title">${h(item.title)}${item.year?` (${h(item.year)})`:''}</div><div class="metadata-item-key">ratingKey ${h(item.rating_key)} &middot; ${h(item.metadata_key)}</div></div>${item.plex_url?`<a class="btn btn-ghost" href="${h(item.plex_url)}" target="_blank" rel="noopener noreferrer">Open in Plex &nearr;</a>`:''}</div>`).join('');
+    const statusLabel = !library.scanned ? 'Not scanned' : library.error ? 'Scan error' : unmatched ? `${unmatched} need attention` : 'All matched';
+    return `<section class="repair-instance-card metadata-audit-card ${library.error||unmatched?'not-ready':''} ${expanded?'expanded':''}">
+      <div class="repair-instance-head"><div class="repair-instance-name">${h(library.name)}</div><div class="repair-status-pill ${library.error||unmatched?'warn':''}"><span class="repair-status-dot"></span>${statusLabel}</div></div>
+      <div class="repair-metrics"><div class="repair-metric"><div class="repair-metric-label">Unmatched</div><div class="repair-metric-value affected">${library.scanned?unmatched.toLocaleString():'—'}</div></div><div class="repair-metric"><div class="repair-metric-label">Items scanned</div><div class="repair-metric-value">${library.scanned?Number(library.total_items||0).toLocaleString():'—'}</div></div></div>
+      <div class="metadata-card-body"><div class="repair-library-panel">${!library.scanned?'<div class="metadata-clean">Run a server scan to check this library.</div>':library.error?`<div class="metadata-error">${h(library.error)}</div>`:`<div class="metadata-items">${items||'<div class="metadata-clean">No unmatched items found.</div>'}</div>`}</div></div>
+      <div class="repair-instance-footer"><div class="repair-instance-footnote">${audit?`Last scanned ${h(fmtAgo(audit.audited_at))}`:'Not scanned yet'}<br>${h(instanceName)}</div><div class="repair-instance-actions"><button class="btn btn-secondary metadata-collapse" data-metadata-toggle="${h(key)}">${expanded?'Hide details':'Show details'}</button></div></div>
+    </section>`;
+  }).join('');
 }
 
 function toggleMetadataDetails(instance) {
   if (_metadataExpanded.has(instance)) _metadataExpanded.delete(instance); else _metadataExpanded.add(instance);
   renderMetadataAudits(_metadataAuditStatus || {instances:[],audits:{}});
+}
+
+function collapseAllMetadata() {
+  _metadataExpanded.clear();
+  renderMetadataAudits(_metadataAuditStatus || {instances:[],audits:{}});
+}
+
+function expandMetadataProblems(instance, result) {
+  if ((_metadataAuditStatus?.instances || []).length === 1) {
+    (result.libraries || []).filter(library => library.error || Number(library.unmatched_count || 0) > 0).forEach(library => _metadataExpanded.add(`${instance}::${library.name}`));
+  } else if (result.unmatched_count || result.error_count) {
+    _metadataExpanded.add(instance);
+  }
 }
 
 function openMetadataHealthSettings() {
@@ -1818,7 +1950,7 @@ async function runMetadataAudit(instance, button) {
     const response = await fetch('/api/metadata-audit/run', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instance})});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Metadata scan failed');
-    if (result.unmatched_count || result.error_count) _metadataExpanded.add(instance);
+    expandMetadataProblems(instance, result);
     toast(`Scan found ${result.unmatched_count} unmatched item(s) on ${instance}`, result.unmatched_count ? 'warn' : 'pass');
     await loadMetadataAuditStatus();
   } catch (error) {
@@ -1838,18 +1970,41 @@ async function scanAllMetadata(button) {
       const response = await fetch('/api/metadata-audit/run', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instance:instances[index]})});
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'scan failed');
-      if (result.unmatched_count || result.error_count) _metadataExpanded.add(instances[index]);
+      expandMetadataProblems(instances[index], result);
     } catch (error) { failures++; }
   }
   await loadMetadataAuditStatus();
   button.disabled = false;
-  button.textContent = 'Scan all servers';
+  button.textContent = instances.length === 1 ? 'Scan server' : 'Scan all servers';
   toast(failures ? `Metadata scan finished with ${failures} server error(s)` : 'All metadata scans complete', failures ? 'warn' : 'pass');
 }
 
 // Timestamp repair
 let _repairStatus = null;
 let _repairPoll = null;
+const _repairExpanded = new Set();
+let _repairExpansionInitialized = false;
+const _repairPhases = ['Preparing','Temporary rename','First Plex scan','Names restored','Second Plex scan','Verifying','Repaired'];
+
+function repairPhaseIndex(state) {
+  return ({prepared:0,renamed:1,first_plex_scan:2,waiting_for_first_scan:2,restoring:3,restored:3,second_plex_scan:4,verifying:5,completed:6})[state] ?? 0;
+}
+
+function renderRepairProgress(state) {
+  const current = repairPhaseIndex(state);
+  return `<div class="repair-progress">${_repairPhases.map((label,index)=>`<div class="repair-progress-step ${index<current?'done':index===current?'current':''}">${index+1}. ${label}</div>`).join('')}</div>`;
+}
+
+function formatUnixDate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 'Unavailable';
+  try { return new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeZone:'UTC'}).format(new Date(numeric*1000)); }
+  catch (_) { return String(value); }
+}
+
+function pathStateLabel(state) {
+  return ({missing_path:'Missing path',broken_symlink:'Broken symlink',regular_file:'Regular file',repairable_timestamp:'Repairable timestamp'})[state] || String(state||'Unknown path state');
+}
 
 async function loadRepairStatus() {
   try {
@@ -1893,56 +2048,93 @@ function renderRepairOverview(status) {
     <div class="repair-active-card">
       <div class="repair-active-title">${h(active.state.replaceAll('_',' '))} &middot; ${h(active.instance)} / ${h(active.library)}</div>
       <div class="repair-active-meta">${h(active.folder)} &middot; ${Number(active.scan_elapsed_seconds||0)}s elapsed &middot; heartbeat ${h(fmtAgo(active.last_heartbeat))}</div>
+      ${renderRepairProgress(active.state)}
       <div style="margin-top:14px;display:flex;gap:10px;"><button class="btn btn-warn" onclick="cancelRepair()">Cancel safely</button>${active.state === 'recovery_required' ? '<button class="btn btn-primary" onclick="recoverRepair()">Recover</button>' : ''}</div>
     </div>` : (status.state === 'failed' && status.error ? `<div class="repair-warning" style="border-color:var(--fail-line);color:var(--fail2);">Last repair attempt failed: ${h(status.error)}</div>` : '');
 
   const audits = status.audits || {};
+  if (!_repairExpansionInitialized) {
+    (status.instances || []).filter(instance => instance.enabled).forEach(instance => _repairExpanded.add(instance.name));
+    _repairExpansionInitialized = true;
+  }
   document.getElementById('repair-history').innerHTML = (status.history || []).length ? status.history.map(item => `
     <div class="repair-history-item"><span class="badge ${item.state==='completed'?'success':item.state==='failed'?'error':'skipped'}">${h(item.state)}</span>
-      <div><div class="repair-history-title">${h(item.instance)} / ${h(item.library)}</div><div class="repair-history-meta">${h(item.folder)}<br>${h(fmtTime(item.completed_at||item.updated_at))}${item.error?` &middot; ${h(item.error)}`:''}</div></div>
+      <div><div class="repair-history-title">${h(item.instance)} / ${h(item.library)}</div><div class="repair-history-meta">${h(item.folder)}<br>${h(fmtTime(item.completed_at||item.updated_at))}${item.error?` &middot; ${h(item.error)}`:''}${(item.timestamp_changes||[]).map(change=>`<br>${h(change.file_path.split(/[\\/]/).pop())}: ${h(change.before)} &rarr; ${change.after==null?'not verified':h(change.after)}`).join('')}</div></div>
     </div>`).join('') : '<div class="empty-msg">No repair transactions yet. Completed folder repairs will appear here.</div>';
 
-  document.getElementById('repair-summary-grid').innerHTML = (status.instances || []).map(instance => {
+  const orderedInstances = [...(status.instances || [])].sort((left,right) => Number(right.enabled)-Number(left.enabled) || Number(right.ready)-Number(left.ready));
+  document.getElementById('repair-summary-grid').innerHTML = orderedInstances.map(instance => {
     const audit = audits[instance.name];
     const groups = {};
     (audit?.folders || []).forEach(folder => {
       const key = folder.library_section_id;
-      groups[key] ||= {section:key,library:folder.library,folders:[]};
+      groups[key] ||= {section:key,library:folder.library,folders:[],issues:[]};
       groups[key].folders.push(folder);
     });
+    (audit?.path_issues || []).forEach(issue => {
+      const key = issue.library_section_id;
+      groups[key] ||= {section:key,library:`Section ${key}`,folders:[],issues:[]};
+      groups[key].issues.push(issue);
+    });
     (audit?.libraries || []).forEach(library => {
-      groups[library.library_section_id] ||= {section:library.library_section_id,library:library.library,folders:[]};
+      groups[library.library_section_id] ||= {section:library.library_section_id,library:library.library,folders:[],issues:[]};
+      groups[library.library_section_id].library = library.library;
       groups[library.library_section_id].totalItems = library.total_items;
     });
     const affected = Number(audit?.distinct_files || 0);
+    const pathCounts = audit?.path_state_counts || {};
+    const excludedPaths = Number(pathCounts.missing_path||0) + Number(pathCounts.broken_symlink||0) + Number(pathCounts.regular_file||0);
+    const pathIssueSummary = [
+      pathCounts.missing_path ? `${pathCounts.missing_path} missing` : '',
+      pathCounts.broken_symlink ? `${pathCounts.broken_symlink} broken symlink${Number(pathCounts.broken_symlink)===1?'':'s'}` : '',
+      pathCounts.regular_file ? `${pathCounts.regular_file} regular file${Number(pathCounts.regular_file)===1?'':'s'}` : '',
+    ].filter(Boolean).join(' · ');
     const fixed = Number(status.repair_totals?.[instance.name] || 0);
     const totalItems = audit?.total_library_items;
     const libraryRows = Object.values(groups).map(group => {
       const count = group.folders.reduce((total,folder)=>total+folder.files.length,0);
       const folderCount = group.folders.length;
+      const issueCount = (group.issues || []).length;
       const libraryTotal = group.totalItems != null && Number.isFinite(Number(group.totalItems)) ? Number(group.totalItems).toLocaleString() : '\u2014';
       return `<div class="repair-library-row">
-        <div><div class="repair-library-name">${h(group.library)}</div><div class="repair-library-meta">${folderCount} affected folder${folderCount===1?'':'s'} &middot; ${libraryTotal} total items</div></div>
+        <div><div class="repair-library-name">${h(group.library)}</div><div class="repair-library-meta">${folderCount} repairable folder${folderCount===1?'':'s'}${issueCount?` &middot; ${issueCount} other path issue${issueCount===1?'':'s'}`:''} &middot; ${libraryTotal} total items</div></div>
         <div class="repair-library-count">${count.toLocaleString()}<span>affected</span></div>
-        <button class="btn btn-ghost" data-repair-instance="${h(instance.name)}" data-repair-section="${h(group.section)}" data-repair-library="${h(group.library)}" ${count?'':'disabled'}>View issues</button>
+        <button class="btn btn-ghost" data-repair-instance="${h(instance.name)}" data-repair-section="${h(group.section)}" data-repair-library="${h(group.library)}" ${count||issueCount?'':'disabled'}>View issues</button>
       </div>`;
     }).join('');
     const workerLabel = instance.worker === 'local' ? 'Main Emptyarr container' : `Worker: ${h(instance.worker)}`;
-    return `<section class="repair-instance-card ${instance.ready?'':'not-ready'}">
-      <div class="repair-instance-head"><div><div class="repair-instance-kind">Plex server</div><div class="repair-instance-name">${h(instance.name)}</div></div><div class="repair-status-pill ${instance.ready?'':'warn'}"><span class="repair-status-dot"></span>${instance.ready?'Ready':'Setup required'}</div></div>
+    const readinessLabel = instance.ready ? 'Ready' : instance.enabled ? 'Setup required' : 'Disabled';
+    const expanded = _repairExpanded.has(instance.name);
+    return `<section class="repair-instance-card ${instance.ready?'':'not-ready'} ${expanded?'':'repair-collapsed'}">
+      <div class="repair-instance-head"><div><div class="repair-instance-kind">Plex server</div><div class="repair-instance-name">${h(instance.name)}</div></div><div class="repair-instance-head-actions"><div class="repair-status-pill ${instance.ready?'':'warn'}"><span class="repair-status-dot"></span>${readinessLabel}</div><button class="btn btn-secondary" data-repair-toggle="${h(instance.name)}">${expanded?'Hide details':'Show details'}</button></div></div>
+      <div class="repair-overview-body">
       <div class="repair-metrics">
         <div class="repair-metric"><div class="repair-metric-label">Affected files</div><div class="repair-metric-value affected">${affected.toLocaleString()}</div></div>
         <div class="repair-metric"><div class="repair-metric-label">Files fixed</div><div class="repair-metric-value fixed">${fixed.toLocaleString()}</div></div>
         <div class="repair-metric"><div class="repair-metric-label">Library items</div><div class="repair-metric-value">${totalItems != null&&Number.isFinite(Number(totalItems))?Number(totalItems).toLocaleString():'\u2014'}</div></div>
       </div>
-      <div class="repair-library-panel"><div class="repair-library-panel-head"><span>Library audit</span><span>${audit ? `scanned ${h(fmtAgo(audit.audited_at))}` : 'not audited'}</span></div>${libraryRows || `<div class="repair-empty-audit"><div><strong style="display:block;color:var(--bright);font-size:17px;margin-bottom:6px;">${instance.ready?'Run the first audit':'Finish setup to begin'}</strong>${h(instance.readiness)}</div></div>`}</div>
-      <div class="repair-instance-footer"><div class="repair-instance-footnote">${workerLabel}<br>${audit ? `${affected.toLocaleString()} affected files across ${Number(audit.affected_folders||0).toLocaleString()} folders` : 'No audit results recorded yet'}</div><div class="repair-instance-actions">${!instance.ready?`<button class="btn btn-secondary" data-configure-repair="${h(instance.name)}">Configure</button>`:''}<button class="btn btn-primary" data-audit-instance="${h(instance.name)}" ${instance.ready&&!status.running?'':'disabled'}>Audit now</button></div></div>
+      ${excludedPaths ? `<div class="repair-warning" style="margin:0 0 16px;border-color:var(--fail-line);color:var(--fail2);"><strong>${excludedPaths} database entr${excludedPaths===1?'y':'ies'} excluded from repair:</strong> ${h(pathIssueSummary)}. View the affected library for details.</div>` : ''}
+      ${audit?.database_count_changed ? `<div class="repair-warning" style="margin:0 0 16px;"><strong>Database count changed since this audit:</strong> ${Number(audit.database_distinct_files||0).toLocaleString()} then, ${Number(audit.live_database_distinct_files||0).toLocaleString()} now. Run a fresh audit before repairing.</div>` : ''}
+      <div class="repair-library-panel"><div class="repair-library-panel-head"><span>Library audit</span><span>${audit ? `snapshot ${h(fmtTime(audit.audited_at))}` : 'not audited'}</span></div>${libraryRows || `<div class="repair-empty-audit"><div><strong style="display:block;color:var(--bright);font-size:17px;margin-bottom:6px;">${instance.ready?'Run the first audit':'Finish setup to begin'}</strong>${h(instance.readiness)}</div></div>`}</div>
+      <div class="repair-instance-footer"><div class="repair-instance-footnote">${workerLabel}<br>${audit ? `${affected.toLocaleString()} repairable files across ${Number(audit.affected_folders||0).toLocaleString()} folders · audit ${h(fmtAgo(audit.audited_at))}` : 'No audit results recorded yet'}</div><div class="repair-instance-actions">${!instance.ready?`<button class="btn btn-secondary" data-configure-repair="${h(instance.name)}">Configure</button>`:''}<button class="btn btn-primary" data-audit-instance="${h(instance.name)}" ${instance.ready&&!status.running?'':'disabled'}>Audit now</button></div></div></div>
     </section>`;
   }).join('') || '<div class="empty-msg">No Plex instances are configured.</div>';
 
   document.querySelectorAll('[data-repair-instance]').forEach(button => button.addEventListener('click', () => openRepairLibrary(button.dataset.repairInstance,button.dataset.repairSection,button.dataset.repairLibrary)));
   document.querySelectorAll('[data-audit-instance]').forEach(button => button.addEventListener('click', () => auditRepair(button.dataset.auditInstance)));
   document.querySelectorAll('[data-configure-repair]').forEach(button => button.addEventListener('click', () => { showPage('settings',document.getElementById('nav-settings')); const settingsButton=[...document.querySelectorAll('.settings-nav-item')].find(item=>item.textContent.includes('Timestamp Repair')); showSettingsSection('timestamp-repair',settingsButton); }));
+  document.querySelectorAll('[data-repair-toggle]').forEach(button => button.addEventListener('click', () => toggleRepairDetails(button.dataset.repairToggle)));
+}
+
+function toggleRepairDetails(instanceName) {
+  if (_repairExpanded.has(instanceName)) _repairExpanded.delete(instanceName); else _repairExpanded.add(instanceName);
+  renderRepairOverview(_repairStatus || {instances:[],audits:{},history:[]});
+}
+
+function setAllRepairDetails(expanded) {
+  _repairExpanded.clear();
+  if (expanded) (_repairStatus?.instances || []).forEach(instance => _repairExpanded.add(instance.name));
+  renderRepairOverview(_repairStatus || {instances:[],audits:{},history:[]});
 }
 
 async function auditRepair(instance) {
@@ -1962,21 +2154,29 @@ function openRepairLibrary(instance, section, title) {
   document.getElementById('repair-detail-instance').textContent = instance;
   document.getElementById('repair-detail-title').textContent = title || 'Affected folders';
   const folders = (audit.folders || []).filter(folder => !section || folder.library_section_id === String(section));
+  const pathIssues = (audit.path_issues || []).filter(issue => !section || issue.library_section_id === String(section));
+  const staleAudit = audit.database_count_changed === true;
   const fileCount = folders.reduce((total,folder)=>total+folder.files.length,0);
-  document.getElementById('repair-detail-subtitle').textContent = `${fileCount} affected file(s) across ${folders.length} movie/season folder(s)`;
-  document.getElementById('repair-folder-grid').innerHTML = folders.map(folder => `
+  document.getElementById('repair-detail-subtitle').textContent = `${fileCount} repairable file(s) across ${folders.length} folder(s)${pathIssues.length?` · ${pathIssues.length} other path issue(s) excluded`:''} · audit ${fmtTime(audit.audited_at)}`;
+  const repairableCards = folders.map(folder => {
+    const action = folder.library_type === 'movie' ? 'Repair movie folder' : folder.library_type === 'show' ? 'Repair season folder' : 'Repair folder';
+    return `
     <div class="repair-folder-card"><div class="repair-folder-title">${h(folder.title)}</div><div class="repair-folder-subtitle">${h(folder.subtitle || folder.library)} &middot; ${folder.files.length} affected file${folder.files.length===1?'':'s'}</div>
-      <div class="repair-files">${folder.files.map(file => `<div class="repair-file"><strong>${h(file.item_title || file.file_path.split(/[\\/]/).pop())}</strong><div class="repair-file-path">${h(file.file_path)}</div></div>`).join('')}</div>
-      <div class="repair-folder-footer"><span class="badge skipped">manual only</span><button class="btn btn-primary" data-repair-payload="${h(encodeURIComponent(JSON.stringify({instance,section:folder.library_section_id,folder:folder.folder,files:folder.files.map(file=>file.file_path)})))}" ${_repairStatus.running?'disabled':''}>Repair this folder</button></div>
-    </div>`).join('') || '<div class="empty-msg">No affected folders remain. Run a fresh audit to confirm.</div>';
-  document.querySelectorAll('[data-repair-payload]').forEach(button => button.addEventListener('click', () => { const payload=JSON.parse(decodeURIComponent(button.dataset.repairPayload)); runRepairFolder(payload.instance,payload.section,payload.folder,payload.files); }));
+      <div class="repair-files">${folder.files.map(file => `<div class="repair-file"><strong>${h(file.item_title || file.file_path.split(/[\\/]/).pop())}</strong><div class="repair-file-path">${h(file.file_path)}</div><div class="repair-change"><div><span>Plex timestamp</span><strong class="bad">${h(formatUnixDate(file.stored_timestamp))} (${h(file.stored_timestamp)})</strong></div><div><span>Filesystem timestamp</span><strong>${h(file.filesystem_timestamp_iso ? fmtTime(file.filesystem_timestamp_iso) : 'Unavailable')}</strong></div><div><span>Status</span><strong class="bad">Negative Plex part timestamp</strong></div></div></div>`).join('')}</div>
+      <div class="repair-folder-footer"><span class="badge skipped">${staleAudit?'fresh audit required':'manual only'}</span><button class="btn btn-primary" data-repair-payload="${h(encodeURIComponent(JSON.stringify({instance,section:folder.library_section_id,folder:folder.folder,files:folder.files,libraryType:folder.library_type})))}" ${_repairStatus.running||staleAudit?'disabled':''}>${action}</button></div>
+    </div>`;
+  }).join('');
+  const issueCards = pathIssues.map(issue => `<div class="repair-folder-card repair-path-issue"><div class="repair-folder-title">${h(issue.item_title || issue.file_path.split(/[\\/]/).pop())}</div><div class="repair-folder-subtitle">Excluded from automatic repair</div><div class="repair-files"><div class="repair-file"><div class="repair-file-path">${h(issue.file_path)}</div><div class="repair-change"><div><span>Plex timestamp</span><strong class="bad">${h(formatUnixDate(issue.stored_timestamp))} (${h(issue.stored_timestamp)})</strong></div><div><span>Path status</span><strong class="bad">${h(pathStateLabel(issue.path_state))}</strong></div><div><span>Action</span><strong>Resolve the filesystem path before a fresh audit</strong></div></div></div></div></div>`).join('');
+  document.getElementById('repair-folder-grid').innerHTML = repairableCards + issueCards || '<div class="empty-msg">No affected folders remain. Run a fresh audit to confirm.</div>';
+  document.querySelectorAll('[data-repair-payload]').forEach(button => button.addEventListener('click', () => { const payload=JSON.parse(decodeURIComponent(button.dataset.repairPayload)); runRepairFolder(payload.instance,payload.section,payload.folder,payload.files,payload.libraryType); }));
 }
 
 function closeRepairLibrary() { document.getElementById('repair-detail').style.display='none'; document.getElementById('repair-overview').style.display=''; }
 
-async function runRepairFolder(instance, section, folder, files) {
-  const exact = files.map(path => `  • ${path}`).join('\n');
-  if (!confirm(`Repair this one folder?\n\n${folder}\n\nAffected symlinks (${files.length}):\n${exact}\n\nEmpty Trash will remain locked until restoration and verification complete.`)) return;
+async function runRepairFolder(instance, section, folder, files, libraryType) {
+  const scope = libraryType === 'movie' ? 'movie folder' : libraryType === 'show' ? 'season folder' : 'folder';
+  const exact = files.map(file => `  • ${file.file_path}\n    Plex timestamp: ${file.stored_timestamp} → positive value assigned and verified by Plex`).join('\n');
+  if (!confirm(`Repair this ${scope}?\n\nEmptyarr will temporarily rename ${files.length} symlink${files.length===1?'':'s'} in this ${scope}, scan the folder, restore the original filename${files.length===1?'':'s'}, scan again, and verify that Plex stored a valid positive timestamp.\n\nThe underlying provider/NZBDAV object${files.length===1?'':'s'} will not be renamed or modified.\n\n${folder}\n\nAffected symlinks (${files.length}):\n${exact}\n\nEmpty Trash remains locked until restoration and verification complete.`)) return;
   const response = await fetch('/api/timestamp-repair/run', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instance,library_section_id:section,folder})});
   const data = await response.json();
   if (!response.ok) return toast(data.error || 'Repair could not start', 'fail');
@@ -1994,6 +2194,8 @@ function showSettingsSection(name, btn) {
   if (name === 'providers') loadProviderStatus();
   if (name === 'security')  loadApiToken();
   if (name === 'timestamp-repair') renderRepairSettings();
+  if (name === 'trash-removal') { renderTrashRemovalSettings(); loadGlobalScheduleControls(); }
+  if (name === 'features') renderFeatureSettings();
   if (name === 'metadata-health') renderMetadataHealthSettings();
   if (name === 'general') startLogViewer();
   else stopLogViewer();
@@ -2428,7 +2630,8 @@ async function refreshLogView() {
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-let _settingsData = { instances: [], repair_workers: [], default_cron: '0 * * * *', discord_webhook: '', notification_destinations: [], log_level: 'INFO', log_max_file_size_mb: 5, log_max_total_size_mb: 50, log_retention_days: 14, max_trash_items: 1000, max_trash_percent: 25, notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
+let _settingsData = { instances: [], repair_workers: [], features: {trash_removal:true,metadata_health:true,timestamp_repair:true}, default_cron: '0 * * * *', discord_webhook: '', notification_destinations: [], log_level: 'INFO', log_max_file_size_mb: 5, log_max_total_size_mb: 50, log_retention_days: 14, max_trash_items: 1000, max_trash_percent: 25, notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
+let _trashSettingsInstance = 0;
 
 async function loadSettings() {
   try {
@@ -2449,6 +2652,11 @@ async function loadSettings() {
     _settingsData.log_max_total_size_mb = cfg.logging?.max_total_size_mb ?? 50;
     _settingsData.log_retention_days = cfg.logging?.retention_days ?? 14;
     _settingsData.default_cron       = cfg.schedule?.default_cron || '0 * * * *';
+    _settingsData.features = {
+      trash_removal: cfg.features?.trash_removal !== false,
+      metadata_health: cfg.features?.metadata_health !== false,
+      timestamp_repair: cfg.features?.timestamp_repair !== false,
+    };
     _settingsData.max_trash_items    = cfg.max_trash_items ?? 1000;
     _settingsData.max_trash_percent  = cfg.max_trash_percent ?? 25;
     _settingsData.notify_emptied     = cfg.notify?.on_emptied     ?? cfg.notify?.on_success ?? true;
@@ -2494,8 +2702,11 @@ async function loadSettings() {
       }))
     }));
     renderSettingsInstances();
+    renderTrashRemovalSettings(_trashSettingsInstance);
     renderRepairSettings();
     renderMetadataHealthSettings();
+    renderFeatureSettings();
+    applyFeatureVisibility(_settingsData.features);
     loadGlobalScheduleControls();
     // Populate notification fields
     document.getElementById('s-discord').value = _settingsData.discord_webhook;
@@ -2559,15 +2770,40 @@ function renderSettingsInstances() {
           <input class="form-input" type="password" value="${h(inst.token||'')}" placeholder="Saved in persistent config.yml"
                  onchange="_settingsData.instances[${ii}].token=this.value" />
         </div>
-        <hr class="divider"/>
-        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;">Libraries</div>
-        <div id="si-libs-${ii}">
-          ${renderSettingsLibraries(inst.libraries, ii)}
-        </div>
-        <button class="btn btn-secondary btn-sm" onclick="settingsAddLibrary(${ii})">+ Add Library</button>
       </div>
     </div>
   `).join('');
+}
+
+function renderTrashRemovalSettings(selectedIndex = _trashSettingsInstance) {
+  const select = document.getElementById('trash-settings-instance');
+  const container = document.getElementById('trash-settings-libraries');
+  if (!select || !container) return;
+  if (!_settingsData.instances.length) {
+    select.innerHTML = '<option>No Plex instances configured</option>';
+    select.disabled = true;
+    container.innerHTML = '<div class="empty-msg">Add a Plex instance first.</div>';
+    return;
+  }
+  select.disabled = false;
+  _trashSettingsInstance = Math.max(0, Math.min(Number(selectedIndex)||0, _settingsData.instances.length-1));
+  select.innerHTML = _settingsData.instances.map((instance,index) => `<option value="${index}" ${index===_trashSettingsInstance?'selected':''}>${h(instance.name||`Plex instance ${index+1}`)}</option>`).join('');
+  const instance = _settingsData.instances[_trashSettingsInstance];
+  container.innerHTML = `<div class="inst-settings-card"><div class="inst-settings-header"><div><div class="inst-settings-name">${h(instance.name||'Unnamed Plex instance')}</div><div class="form-hint">Trash Removal libraries and safety paths</div></div></div><div class="inst-settings-body"><div id="si-libs-${_trashSettingsInstance}">${renderSettingsLibraries(instance.libraries,_trashSettingsInstance)}</div><button class="btn btn-secondary btn-sm" onclick="settingsAddLibrary(${_trashSettingsInstance})">+ Add monitored library</button></div></div>`;
+}
+
+function renderFeatureSettings() {
+  Object.entries(_settingsData.features).forEach(([name,enabled]) => {
+    const button = document.getElementById(`feature-${name.replaceAll('_','-')}`);
+    if (!button) return;
+    button.classList.toggle('ignored', !enabled);
+    button.innerHTML = `<span>${enabled?'Enabled':'Disabled'}</span><span>${enabled?'Shown and active':'Hidden and inactive'}</span>`;
+  });
+}
+
+function toggleFeatureSetting(name) {
+  _settingsData.features[name] = !_settingsData.features[name];
+  renderFeatureSettings();
 }
 
 function repairConfig(instance) {
@@ -2586,12 +2822,15 @@ function generateRepairWorkerToken() {
 }
 
 function addRepairWorker() {
+  const index = _settingsData.repair_workers.length;
   _settingsData.repair_workers.push({
     name:'altmount-worker', url:'http://vm-altmount:8223',
     controller_url:`${location.protocol}//${location.hostname}:${location.port || (location.protocol==='https:'?'443':'80')}`,
     token:generateRepairWorkerToken(),
   });
   renderRepairSettings();
+  requestAnimationFrame(() => scrollToRepairWorker(index));
+  toast('Worker added. Choose its Plex server in this card.', 'warn');
 }
 
 function removeRepairWorker(index) {
@@ -2621,19 +2860,69 @@ function repairWorkerOptions(selected) {
   ].join('');
 }
 
+function assignRepairWorker(workerIndex) {
+  const select = document.getElementById(`repair-worker-instance-${workerIndex}`);
+  if (!select?.value) {
+    toast('Choose a Plex server first.', 'fail');
+    return;
+  }
+  const instanceIndex = Number(select?.value);
+  if (!Number.isInteger(instanceIndex) || !_settingsData.instances[instanceIndex]) {
+    toast('Choose a Plex server first.', 'fail');
+    return;
+  }
+  const repair = repairConfig(_settingsData.instances[instanceIndex]);
+  repair.worker = _settingsData.repair_workers[workerIndex].name;
+  repair.enabled = true;
+  renderRepairSettings();
+  requestAnimationFrame(() => scrollToRepairInstance(instanceIndex));
+}
+
+function unassignRepairWorker(workerIndex, instanceIndex) {
+  const repair = repairConfig(_settingsData.instances[instanceIndex]);
+  if (repair.worker === _settingsData.repair_workers[workerIndex].name) {
+    repair.worker = 'local';
+    repair.enabled = false;
+  }
+  renderRepairSettings();
+  requestAnimationFrame(() => scrollToRepairWorker(workerIndex));
+}
+
+function scrollToRepairWorker(index) {
+  document.getElementById(`repair-worker-card-${index}`)?.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+function scrollToRepairInstance(index) {
+  document.getElementById(`repair-instance-card-${index}`)?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
 function workerCompose(index) {
   const worker = _settingsData.repair_workers[index];
   const assigned = _settingsData.instances.filter(instance => repairConfig(instance).worker === worker.name);
   const databaseDirs = [...new Set(assigned.map(instance => repairConfig(instance).database_path.replace(/[\\/][^\\/]+$/, '')).filter(Boolean))];
   const prefixes = [...new Set(assigned.flatMap(instance => repairConfig(instance).allowed_prefixes).filter(Boolean))];
   const volumes = [
-    ...databaseDirs.map((path,i) => `      - HOST_PLEX_DATABASE_DIR_${i+1}:${path}:ro`),
-    ...prefixes.map((path,i) => `      - HOST_REPAIR_PREFIX_${i+1}:${path}:rw,slave`),
+    ...databaseDirs.map((path,i) => `      - \${EMPTYARR_PLEX_DATABASE_DIR_${i+1}:?Set an absolute Plex database host path in Dockge .env}:${path}:ro`),
+    ...prefixes.map((path,i) => `      - \${EMPTYARR_REPAIR_FOLDER_${i+1}:?Set an absolute repair-folder host path in Dockge .env}:${path}:rw,slave`),
   ];
-  return `services:\n  emptyarr-repair-worker:\n    image: liftbridgelabs/emptyarr:latest\n    container_name: emptyarr-repair-worker\n    restart: unless-stopped\n    ports:\n      - "8223:8223"\n    environment:\n      - EMPTYARR_ROLE=repair-worker\n      - EMPTYARR_WORKER_NAME=${worker.name}\n      - EMPTYARR_WORKER_TOKEN=${worker.token}\n      - EMPTYARR_WORKER_DATABASE_ROOTS=${databaseDirs.join(',') || '/plex-db'}\n      - EMPTYARR_WORKER_MEDIA_ROOTS=${prefixes.join(',') || '/repair-media'}\n      - PUID=99\n      - PGID=100\n    volumes:\n      - ./emptyarr-worker-data:/app/data\n${volumes.length ? volumes.join('\n') : '      # Assign a Plex instance below to generate required mount placeholders.'}`;
+  return `services:\n  emptyarr-repair-worker:\n    image: liftbridgelabs/emptyarr:latest\n    container_name: emptyarr-repair-worker\n    restart: unless-stopped\n    ports:\n      - "8223:8223"\n    environment:\n      - EMPTYARR_ROLE=repair-worker\n      - EMPTYARR_WORKER_NAME=${worker.name}\n      - EMPTYARR_WORKER_TOKEN=\${EMPTYARR_WORKER_TOKEN:?Paste the pairing secret into Dockge .env}\n      - EMPTYARR_WORKER_DATABASE_ROOTS=${databaseDirs.join(',') || '/plex-db'}\n      - EMPTYARR_WORKER_MEDIA_ROOTS=${prefixes.join(',') || '/repair-media'}\n      - PUID=99\n      - PGID=100\n    volumes:\n      - \${EMPTYARR_WORKER_DATA_DIR:?Set an absolute worker-data host path in Dockge .env}:/app/data\n${volumes.join('\n')}`;
 }
 
 async function copyWorkerCompose(index) {
+  const worker = _settingsData.repair_workers[index];
+  const assigned = _settingsData.instances.filter(instance => repairConfig(instance).worker === worker.name);
+  if (!assigned.length) {
+    toast('Assign at least one Plex instance to this worker before copying Compose.', 'fail');
+    return;
+  }
+  const incomplete = assigned.filter(instance => {
+    const repair = repairConfig(instance);
+    return !repair.database_path || !repair.allowed_prefixes.length;
+  });
+  if (incomplete.length) {
+    toast(`Finish database and repair-folder setup for ${incomplete.map(instance=>instance.name).join(', ')} first.`, 'fail');
+    return;
+  }
   const text = workerCompose(index);
   try {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
@@ -2643,7 +2932,7 @@ async function copyWorkerCompose(index) {
     area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
     document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
   }
-  toast('Worker Compose copied. Replace every HOST_* placeholder before deploying.', 'pass');
+  toast('Worker Compose copied. Set every required absolute host path in Dockge .env before deploying.', 'pass');
 }
 
 async function testRepairWorker(index) {
@@ -2668,10 +2957,10 @@ function renderMetadataHealthSettings() {
   target.innerHTML = (_settingsData.instances || []).map((instance, index) => {
     const ignored = new Set(instance.metadata_health?.ignored_libraries || []);
     const rows = (instance.libraries || []).map(library => `
-      <label class="metadata-setting-row">
+      <div class="metadata-setting-row">
         <div><strong>${h(library.name)}</strong><br><span>${h(library.type)} library</span></div>
-        <span style="display:flex;align-items:center;gap:9px;color:var(--warn2);font-weight:650;"><input type="checkbox" ${ignored.has(library.name)?'checked':''} onchange="setMetadataLibraryIgnored(${index},${h(JSON.stringify(library.name))},this.checked)"> Ignore</span>
-      </label>`).join('');
+        <button type="button" class="metadata-setting-toggle ${ignored.has(library.name)?'ignored':''}" onclick="setMetadataLibraryIgnored(${index},${h(JSON.stringify(library.name))},${ignored.has(library.name)?'false':'true'})"><span>${ignored.has(library.name)?'Ignored':'Included'}</span><span>${ignored.has(library.name)?'Skip scan':'Scan for matches'}</span></button>
+      </div>`).join('');
     return `<section class="card" style="margin-top:18px;"><div class="card-header"><div><div class="card-title">${h(instance.name)}</div><div class="form-hint">Choose libraries that should not be checked for Plex matches.</div></div></div><div class="card-body"><div class="metadata-settings-list">${rows || '<div class="empty-msg">No libraries configured.</div>'}</div></div></section>`;
   }).join('') || '<div class="empty-msg">No Plex instances configured.</div>';
 }
@@ -2682,14 +2971,27 @@ function setMetadataLibraryIgnored(instanceIndex, libraryName, ignored) {
   const names = new Set(instance.metadata_health.ignored_libraries || []);
   if (ignored) names.add(libraryName); else names.delete(libraryName);
   instance.metadata_health.ignored_libraries = [...names];
+  renderMetadataHealthSettings();
 }
 
 function renderRepairSettings() {
   const workers = document.getElementById('repair-workers-settings');
   const instances = document.getElementById('repair-instances-settings');
   if (!workers || !instances) return;
-  workers.innerHTML = _settingsData.repair_workers.length ? _settingsData.repair_workers.map((worker,index) => `
-    <div style="border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
+  workers.innerHTML = _settingsData.repair_workers.length ? _settingsData.repair_workers.map((worker,index) => {
+    const assigned = _settingsData.instances.filter(instance => repairConfig(instance).worker === worker.name);
+    const complete = assigned.length && assigned.every(instance => {
+      const repair = repairConfig(instance);
+      return repair.database_path && repair.allowed_prefixes.length;
+    });
+    const available = _settingsData.instances
+      .map((instance,instanceIndex) => ({instance,instanceIndex}))
+      .filter(({instance}) => repairConfig(instance).worker !== worker.name);
+    const assignmentText = !assigned.length
+      ? 'Choose the Plex server that runs on this worker machine.'
+      : `${assigned.length} Plex server${assigned.length===1?'':'s'} assigned${complete?' · ready to copy Compose':' · path setup still required'}`;
+    return `
+    <div id="repair-worker-card-${index}" style="border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;scroll-margin-top:90px;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;"><strong style="font-size:16px;color:var(--bright);">${h(worker.name || 'Unnamed worker')}</strong><button class="btn btn-danger btn-sm" onclick="removeRepairWorker(${index})">Remove</button></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Worker name</label><input class="form-input" value="${h(worker.name)}" onchange="renameRepairWorker(${index},this.value)"></div>
@@ -2697,21 +2999,29 @@ function renderRepairSettings() {
       </div>
       <div class="form-group"><label class="form-label">Controller URL from worker</label><input class="form-input" value="${h(worker.controller_url)}" placeholder="http://UNRAID-IP:8222" onchange="_settingsData.repair_workers[${index}].controller_url=this.value.trim()"><div class="form-hint">The VM worker uses this address only for approved path-limited Plex scans.</div></div>
       <div class="form-group"><label class="form-label">Pairing secret</label><div style="display:flex;gap:8px;"><input class="form-input" type="password" value="${h(worker.token)}" onchange="_settingsData.repair_workers[${index}].token=this.value"><button class="btn btn-secondary" onclick="_settingsData.repair_workers[${index}].token=generateRepairWorkerToken();renderRepairSettings()">Regenerate</button></div></div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><button class="btn btn-secondary btn-sm" onclick="testRepairWorker(${index})">Test connection</button><button class="btn btn-secondary btn-sm" onclick="copyWorkerCompose(${index})">Copy worker Compose</button><span id="repair-worker-test-${index}" class="form-hint" style="margin:0;"></span></div>
-    </div>`).join('') : '<div class="empty-msg">No remote worker is needed for Plex servers whose database and repair paths are mounted into this container.</div>';
+      <div class="form-group"><label class="form-label">1. Assign a Plex server</label><div style="display:flex;gap:8px;align-items:center;"><select class="form-input" id="repair-worker-instance-${index}"><option value="">Choose Plex server…</option>${available.map(({instance,instanceIndex})=>`<option value="${instanceIndex}">${h(instance.name)}</option>`).join('')}</select><button class="btn btn-primary" type="button" onclick="assignRepairWorker(${index})" ${available.length?'':'disabled'}>Assign &amp; configure</button></div></div>
+      ${assigned.map(instance => { const instanceIndex=_settingsData.instances.indexOf(instance); const ready=Boolean(repairConfig(instance).database_path && repairConfig(instance).allowed_prefixes.length); return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;margin-bottom:9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);"><div><strong>${h(instance.name)}</strong><div class="form-hint">${ready?'Paths configured':'Database and repair folders needed'}</div></div><div style="display:flex;gap:8px;"><button class="btn btn-secondary btn-sm" type="button" onclick="scrollToRepairInstance(${instanceIndex})">${ready?'Review setup':'Configure paths'}</button><button class="btn btn-danger btn-sm" type="button" onclick="unassignRepairWorker(${index},${instanceIndex})">Unassign</button></div></div>`; }).join('')}
+      <div class="repair-warning" style="margin:12px 0 14px;">${h(assignmentText)}</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><button class="btn btn-secondary btn-sm" onclick="testRepairWorker(${index})">Test connection</button><button class="btn btn-secondary btn-sm" onclick="copyWorkerCompose(${index})" ${complete?'':'disabled'} title="${complete?'Copy a complete worker definition':'Assign and finish a Plex server below first'}">Copy worker Compose</button><span id="repair-worker-test-${index}" class="form-hint" style="margin:0;"></span></div>
+    </div>`;
+  }).join('') : '<div class="empty-msg">No remote worker is needed for Plex servers whose database and repair paths are mounted into this container.</div>';
 
-  instances.innerHTML = _settingsData.instances.map((instance,index) => {
+  const orderedInstances = _settingsData.instances.map((instance,index) => ({instance,index})).sort((left,right) => Number(repairConfig(right.instance).enabled)-Number(repairConfig(left.instance).enabled));
+  instances.innerHTML = orderedInstances.map(({instance,index}) => {
     const repair = repairConfig(instance);
-    return `<div class="card" style="margin-bottom:18px;">
+    const remoteWorkerIndex = _settingsData.repair_workers.findIndex(worker => worker.name === repair.worker);
+    const remoteReady = remoteWorkerIndex >= 0 && Boolean(repair.database_path && repair.allowed_prefixes.length);
+    return `<div class="card" id="repair-instance-card-${index}" style="margin-bottom:18px;scroll-margin-top:90px;">
       <div class="card-header"><div><div class="card-title">${h(instance.name)}</div><div class="form-hint">Manual repair only; this does not change Empty Trash scheduling.</div></div><label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text2);"><input type="checkbox" ${repair.enabled?'checked':''} onchange="repairConfig(_settingsData.instances[${index}]).enabled=this.checked;renderRepairSettings()"> Enable</label></div>
       <div class="card-body">
+        ${remoteWorkerIndex >= 0 ? `<div class="repair-warning" style="margin:0 0 16px;"><strong>2. Configure ${h(instance.name)}</strong> for ${h(repair.worker)}. Complete the database and repair-folder fields below.</div>` : ''}
         <div class="form-row">
           <div class="form-group"><label class="form-label">Runs on</label><select class="form-input" onchange="repairConfig(_settingsData.instances[${index}]).worker=this.value;renderRepairSettings()">${repairWorkerOptions(repair.worker)}</select></div>
           <div class="form-group"><label class="form-label">Maximum affected files per folder</label><input class="form-input" type="number" min="1" max="100" value="${repair.max_files_per_folder}" onchange="repairConfig(_settingsData.instances[${index}]).max_files_per_folder=Number(this.value)"></div>
         </div>
-        <div class="form-group"><label class="form-label">Plex database inside ${repair.worker==='local'?'Emptyarr':h(repair.worker)}</label><div style="display:flex;gap:8px;"><input class="form-input" value="${h(repair.database_path)}" placeholder="/plex-db/server/com.plexapp.plugins.library.db" onchange="repairConfig(_settingsData.instances[${index}]).database_path=this.value.trim()"><button class="btn btn-secondary" onclick="discoverRepairDatabases(${index})">Discover</button></div><div class="form-hint" id="repair-db-result-${index}">Mount the Plex Databases directory read-only; Emptyarr discovers the filename.</div></div>
-        <div class="form-group"><label class="form-label">Writable repair prefixes</label><textarea class="form-input" rows="3" placeholder="One exact container path per line" onchange="repairConfig(_settingsData.instances[${index}]).allowed_prefixes=this.value.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean)">${h(repair.allowed_prefixes.join('\n'))}</textarea><div class="form-hint">These are real provider symlink paths, not a literal folder named “repairable.” Mount only these narrow paths read/write.</div></div>
-        <div id="repair-mount-guide-${index}" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;color:var(--text2);"><strong style="color:var(--bright);">Runtime:</strong> ${repair.worker==='local'?'main Emptyarr container':`remote worker ${h(repair.worker)}`} · database read-only · listed prefixes read/write</div>
+        <div class="form-group"><label class="form-label">Plex database used by this server</label><div style="display:flex;gap:8px;"><input class="form-input" value="${h(repair.database_path)}" placeholder="/plex-db/server/com.plexapp.plugins.library.db" onchange="repairConfig(_settingsData.instances[${index}]).database_path=this.value.trim();renderRepairSettings();requestAnimationFrame(()=>scrollToRepairInstance(${index}))"><button class="btn btn-secondary" onclick="discoverRepairDatabases(${index})">Discover</button></div><div class="form-hint" id="repair-db-result-${index}">Click Discover, then choose this Plex server's database from the list. Every displayed value is a path inside the Emptyarr container.</div></div>
+        <div class="form-group"><label class="form-label">Folders Emptyarr may repair</label><textarea class="form-input" rows="3" placeholder="/mnt/symlink_media/symlinks/nzbdav" onchange="repairConfig(_settingsData.instances[${index}]).allowed_prefixes=this.value.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);renderRepairSettings();requestAnimationFrame(()=>scrollToRepairInstance(${index}))">${h(repair.allowed_prefixes.join('\n'))}</textarea><div class="form-hint">Enter the <strong>Container Path</strong> from each narrow read/write Unraid mapping, one per line. For your nzbdav mapping, enter <code>/mnt/symlink_media/symlinks/nzbdav</code>. Emptyarr refuses to rename anything outside the folders listed here.</div></div>
+        ${remoteWorkerIndex >= 0 ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--border);"><span class="form-hint">3. ${remoteReady?'Setup complete. Copy the worker deployment now.':'Complete both path fields to unlock Compose.'}</span><div style="display:flex;gap:8px;"><button class="btn btn-secondary" type="button" onclick="scrollToRepairWorker(${remoteWorkerIndex})">Back to worker</button><button class="btn btn-primary" type="button" onclick="copyWorkerCompose(${remoteWorkerIndex})" ${remoteReady?'':'disabled'}>Copy worker Compose</button></div></div>` : ''}
       </div>
     </div>`;
   }).join('') || '<div class="empty-msg">Connect a Plex instance first.</div>';
@@ -2730,7 +3040,7 @@ async function discoverRepairDatabases(index) {
       toast('Plex database selected', 'pass'); return;
     }
     if (!data.databases.length) { target.textContent = 'No Plex databases found. Check the read-only Docker mount.'; return; }
-    target.innerHTML = `Found ${data.databases.length}. Select one: ` + data.databases.map(path => `<button class="text-link" data-repair-db="${h(path)}" data-repair-index="${index}">${h(path)}</button>`).join(' ');
+    target.innerHTML = `<strong>Found ${data.databases.length} database files. Choose the one belonging to this Plex server:</strong><div class="repair-db-options">${data.databases.map(path => `<button type="button" class="repair-db-option" data-repair-db="${h(path)}" data-repair-index="${index}">${h(path)}<span>Use this database</span></button>`).join('')}</div>`;
     target.querySelectorAll('[data-repair-db]').forEach(button => button.addEventListener('click', () => { repairConfig(_settingsData.instances[Number(button.dataset.repairIndex)]).database_path=button.dataset.repairDb;renderRepairSettings(); }));
   } catch (error) { target.textContent = error.message; }
 }
@@ -2748,13 +3058,27 @@ function cronDescription(cron) {
     const time = `${String(daily[2]).padStart(2,'0')}:${String(daily[1]).padStart(2,'0')}`;
     return `Daily at ${time}`;
   }
-  return cron || 'Every hour';
+  return cron ? 'Custom schedule' : 'Every hour';
+}
+
+function isCustomCron(cron) {
+  if (!cron) return false;
+  if (['*/30 * * * *','0 * * * *','0 */2 * * *','0 */6 * * *','0 2 * * *'].includes(cron)) return false;
+  return !/^(\d{1,2}) (\d{1,2}) \* \* \*$/.test(cron);
+}
+
+function applyScheduleLabels() {
+  document.querySelectorAll('[data-schedule-cron]').forEach(label => {
+    const prefix = label.dataset.scheduleGlobal === 'true' ? 'Global · ' : '';
+    label.textContent = `${prefix}${cronDescription(label.dataset.scheduleCron)}`;
+  });
 }
 
 function loadGlobalScheduleControls() {
   const select = document.getElementById('s-global-schedule');
   const time = document.getElementById('s-global-run-at');
-  if (!select || !time) return;
+  const custom = document.getElementById('s-global-custom-cron');
+  if (!select || !time || !custom) return;
   const cron = _settingsData.default_cron || '0 * * * *';
   const known = [...select.options].some(option => option.value === cron && option.value !== 'custom');
   const daily = /^(\d{1,2}) (\d{1,2}) \* \* \*$/.exec(cron);
@@ -2765,6 +3089,7 @@ function loadGlobalScheduleControls() {
     time.value = `${String(daily[2]).padStart(2,'0')}:${String(daily[1]).padStart(2,'0')}`;
   } else {
     select.value = 'custom';
+    custom.value = cron;
   }
   updateGlobalScheduleControls();
 }
@@ -2772,9 +3097,11 @@ function loadGlobalScheduleControls() {
 function updateGlobalScheduleControls() {
   const select = document.getElementById('s-global-schedule');
   const group = document.getElementById('s-global-time-group');
+  const customGroup = document.getElementById('s-global-custom-group');
   const summary = document.getElementById('s-global-schedule-summary');
-  if (!select || !group || !summary) return;
+  if (!select || !group || !customGroup || !summary) return;
   group.style.display = select.value === 'daily' ? '' : 'none';
+  customGroup.style.display = select.value === 'custom' ? '' : 'none';
   const timezone = {{ scheduler_timezone | tojson }};
   const overrideCount = _settingsData.instances.reduce(
     (count, instance) => count + instance.libraries.filter(library => Boolean(library.cron)).length,
@@ -2788,14 +3115,25 @@ function updateGlobalScheduleControls() {
 
 function globalScheduleChanged() {
   const select = document.getElementById('s-global-schedule');
-  if (!select || select.value === 'custom') {
+  if (!select) return;
+  if (select.value === 'custom') {
+    const custom = document.getElementById('s-global-custom-cron');
+    if (!isCustomCron(_settingsData.default_cron)) _settingsData.default_cron = '0 3 * * *';
+    if (custom) custom.value = _settingsData.default_cron;
     updateGlobalScheduleControls();
     return;
   }
   if (select.value === 'daily') globalRunAtChanged();
   else _settingsData.default_cron = select.value;
   updateGlobalScheduleControls();
-  renderSettingsInstances();
+  renderTrashRemovalSettings();
+}
+
+function globalCustomCronChanged() {
+  const value = document.getElementById('s-global-custom-cron')?.value.trim();
+  if (value) _settingsData.default_cron = value;
+  updateGlobalScheduleControls();
+  renderTrashRemovalSettings();
 }
 
 function globalRunAtChanged() {
@@ -2803,16 +3141,39 @@ function globalRunAtChanged() {
   const [hour, minute] = value.split(':').map(Number);
   _settingsData.default_cron = `${minute} ${hour} * * *`;
   updateGlobalScheduleControls();
-  renderSettingsInstances();
+  renderTrashRemovalSettings();
 }
 
 function applyGlobalScheduleToAll() {
   _settingsData.instances.forEach(instance => {
     instance.libraries.forEach(library => { library.cron = ''; });
   });
-  renderSettingsInstances();
+  renderTrashRemovalSettings();
   updateGlobalScheduleControls();
   toast('All libraries will use the global schedule after saving', 'pass');
+}
+
+function libraryScheduleChanged(instanceIndex, libraryIndex, value) {
+  const library = _settingsData.instances[instanceIndex].libraries[libraryIndex];
+  const group = document.getElementById(`s-lib-custom-${instanceIndex}-${libraryIndex}`);
+  if (value === 'custom') {
+    if (!isCustomCron(library.cron)) library.cron = '0 3 * * *';
+    if (group) {
+      group.style.display = '';
+      const input = group.querySelector('input');
+      if (input) input.value = library.cron;
+    }
+  } else {
+    library.cron = value;
+    if (group) group.style.display = 'none';
+  }
+  updateGlobalScheduleControls();
+}
+
+function libraryCustomCronChanged(instanceIndex, libraryIndex, value) {
+  const cron = value.trim();
+  if (cron) _settingsData.instances[instanceIndex].libraries[libraryIndex].cron = cron;
+  updateGlobalScheduleControls();
 }
 
 function renderSettingsLibraries(libs, ii) {
@@ -2856,16 +3217,21 @@ function renderSettingsLibraries(libs, ii) {
         </div>
         <div class="form-group">
           <label class="form-label">Library schedule</label>
-          <select class="form-input" onchange="_settingsData.instances[${ii}].libraries[${li}].cron=this.value;updateGlobalScheduleControls()">
+          <select class="form-input" onchange="libraryScheduleChanged(${ii},${li},this.value)">
             <option value="" ${!lib.cron?'selected':''}>Use global — ${h(cronDescription(_settingsData.default_cron))}</option>
             <option value="*/30 * * * *" ${lib.cron==='*/30 * * * *'?'selected':''}>Every 30 minutes</option>
             <option value="0 * * * *"    ${lib.cron==='0 * * * *'?'selected':''}>Every hour</option>
             <option value="0 */2 * * *"  ${lib.cron==='0 */2 * * *'?'selected':''}>Every 2 hours</option>
             <option value="0 */6 * * *"  ${lib.cron==='0 */6 * * *'?'selected':''}>Every 6 hours</option>
             <option value="0 2 * * *"    ${lib.cron==='0 2 * * *'?'selected':''}>Daily at 2am</option>
-            ${lib.cron && !['*/30 * * * *','0 * * * *','0 */2 * * *','0 */6 * * *','0 2 * * *'].includes(lib.cron)
-              ? `<option value="${h(lib.cron)}" selected>Custom · ${h(lib.cron)}</option>` : ''}
+            <option value="custom" ${isCustomCron(lib.cron)?'selected':''}>Custom schedule</option>
           </select>
+        </div>
+        <div class="form-group" id="s-lib-custom-${ii}-${li}" style="display:${isCustomCron(lib.cron)?'':'none'};">
+          <label class="form-label">Custom cron expression</label>
+          <input class="form-input" value="${isCustomCron(lib.cron)?h(lib.cron):''}" placeholder="0 3 * * *"
+                 onchange="libraryCustomCronChanged(${ii},${li},this.value)" />
+          <div class="form-hint">Advanced: minute, hour, day, month, weekday.</div>
         </div>
         <div>
           <div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Paths</div>
@@ -2961,6 +3327,7 @@ function toggleLibSettings(id, button) {
 function settingsAddInstance() {
   _settingsData.instances.push({ name:'', url:'', token:'', libraries:[], timestamp_repair:{enabled:false,worker:'local',database_path:'',allowed_prefixes:[],max_files_per_folder:5,scan_timeout_seconds:1800,poll_interval_seconds:5,heartbeat_seconds:30} });
   renderSettingsInstances();
+  renderTrashRemovalSettings(_settingsData.instances.length - 1);
   // Open the last instance's first field
   const inputs = document.querySelectorAll('.inst-settings-card input');
   if (inputs.length) inputs[inputs.length - 3]?.focus();
@@ -2970,11 +3337,12 @@ function settingsRemoveInstance(ii) {
   if (!confirm(`Remove instance "${_settingsData.instances[ii].name}"?`)) return;
   _settingsData.instances.splice(ii, 1);
   renderSettingsInstances();
+  renderTrashRemovalSettings(0);
 }
 
 function settingsAddLibrary(ii) {
   _settingsData.instances[ii].libraries.push({ name:'', type:'physical', cron:'', paths:[] });
-  document.getElementById(`si-libs-${ii}`).innerHTML = renderSettingsLibraries(_settingsData.instances[ii].libraries, ii);
+  renderTrashRemovalSettings(ii);
   // Auto-open the new library
   const newLi = _settingsData.instances[ii].libraries.length - 1;
   const body = document.getElementById(`si-lb-${ii}-${newLi}`);
@@ -2983,7 +3351,7 @@ function settingsAddLibrary(ii) {
 
 function settingsRemoveLibrary(ii, li) {
   _settingsData.instances[ii].libraries.splice(li, 1);
-  document.getElementById(`si-libs-${ii}`).innerHTML = renderSettingsLibraries(_settingsData.instances[ii].libraries, ii);
+  renderTrashRemovalSettings(ii);
 }
 
 function showAddPathForm(ii, li) {
@@ -3142,7 +3510,7 @@ async function testNotificationDestination(index) {
   }
 }
 
-async function settingsSave() {
+async function settingsSave(stayOnSection = '') {
   // Collect notification settings
   _settingsData.discord_webhook   = document.getElementById('s-discord').value.trim();
   _settingsData.log_level         = document.getElementById('s-log-level')?.value || 'INFO';
@@ -3158,9 +3526,9 @@ async function settingsSave() {
   _settingsData.notify_skip       = document.getElementById('s-notify-skip').checked;
   _settingsData.notification_destinations.forEach((_, index) => syncNotificationDestination(index));
 
-  ['settings-save-btn','settings-save-btn2','settings-save-btn-repair','settings-save-btn-metadata'].forEach(id => {
+  ['settings-save-btn','settings-save-btn2','settings-save-btn-repair','settings-save-btn-metadata','settings-save-btn-trash','settings-save-btn-features'].forEach(id => {
     const b = document.getElementById(id);
-    if (b) { b.disabled = true; b.innerHTML = `<span class="spin"></span> saving…`; }
+    if (b) { b.dataset.saveLabel ||= b.innerHTML; b.disabled = true; b.innerHTML = `<span class="spin"></span> saving…`; }
   });
 
   try {
@@ -3170,7 +3538,7 @@ async function settingsSave() {
       body: JSON.stringify({ ..._settingsData, store_tokens: true })
     });
     const d = await r.json();
-    ['settings-save-result','settings-save-result2','settings-save-result-general','settings-save-result-repair','settings-save-result-metadata'].forEach(id => {
+    ['settings-save-result','settings-save-result2','settings-save-result-general','settings-save-result-repair','settings-save-result-metadata','settings-save-result-trash','settings-save-result-features'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = d.ok
         ? `<span style="color:var(--pass);">✓ Saved and applied</span>`
@@ -3178,15 +3546,24 @@ async function settingsSave() {
     });
     if (d.ok) {
       toast('Config saved and applied', 'pass');
-      setTimeout(() => location.reload(), 500);
+      if (stayOnSection === 'features') {
+        applyFeatureVisibility(_settingsData.features);
+      }
+      if (stayOnSection) {
+        await loadSettings();
+        const sectionButton = [...document.querySelectorAll('.settings-nav-item')].find(item => (item.getAttribute('onclick')||'').includes(`'${stayOnSection}'`));
+        showSettingsSection(stayOnSection, sectionButton);
+      } else {
+        setTimeout(() => location.reload(), 500);
+      }
     }
     else toast(d.error, 'fail');
   } catch(e) {
     toast('Save failed', 'fail');
   } finally {
-    ['settings-save-btn','settings-save-btn2','settings-save-btn-repair','settings-save-btn-metadata'].forEach(id => {
+    ['settings-save-btn','settings-save-btn2','settings-save-btn-repair','settings-save-btn-metadata','settings-save-btn-trash','settings-save-btn-features'].forEach(id => {
       const b = document.getElementById(id);
-      if (b) { b.disabled = false; b.innerHTML = '💾 Save Configuration'; }
+      if (b) { b.disabled = false; b.innerHTML = b.dataset.saveLabel || 'Save Configuration'; }
     });
   }
 }
@@ -3573,7 +3950,7 @@ function importDiscoveredPlex(target) {
     });
   });
   if (target === 'wizard') renderWizInstList();
-  else renderSettingsInstances();
+  else { renderSettingsInstances(); renderTrashRemovalSettings(); }
   _plexDiscovered = [];
   document.getElementById(`plex-discovery-${target}`).innerHTML = '';
   const summary = addedServers
@@ -4047,13 +4424,17 @@ function moveProtectionControls() {
 
 if (!_configMissing) {
   moveProtectionControls();
+  applyFeatureVisibility();
+  applyScheduleLabels();
   selectDashboardView(window.location.hash.slice(1) || 'overview', false);
-  setInterval(fetchStatus, 15000);
-  setInterval(fetchHistory, 30000);
-  fetchStatus();
-  fetchHistory();
-  loadMetadataAuditStatus();
-  loadRepairStatus();
+  if (_activeFeatures.trash_removal) {
+    setInterval(fetchStatus, 15000);
+    setInterval(fetchHistory, 30000);
+    fetchStatus();
+    fetchHistory();
+  }
+  if (_activeFeatures.metadata_health) loadMetadataAuditStatus();
+  if (_activeFeatures.timestamp_repair) loadRepairStatus();
   initAuthBanner();
 }
 </script>

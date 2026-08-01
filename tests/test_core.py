@@ -18,7 +18,7 @@ os.environ.setdefault("PLEX_CLIENT_ID_FILE", str(_TEST_ROOT / ".runtime-client.j
 
 import app
 from src.checks import check_debrid_mount, check_file_threshold
-from src.config import (AppConfig, LibraryConfig, PathConfig,
+from src.config import (AppConfig, FeatureConfig, LibraryConfig, PathConfig,
                         PlexInstanceConfig, ProviderCheck, parse_config)
 from src.plex_client import PlexClient, trash_item_key
 from src import runner
@@ -474,6 +474,67 @@ class PlexClientTests(unittest.TestCase):
         )
 
 
+class FeatureToggleTests(unittest.TestCase):
+    def test_feature_flags_round_trip_and_default_on(self):
+        defaults = parse_config({"plex_instances": []})
+        self.assertTrue(defaults.features.trash_removal)
+        self.assertTrue(defaults.features.metadata_health)
+        self.assertTrue(defaults.features.timestamp_repair)
+
+        parsed = parse_config({
+            "features": {
+                "trash_removal": False,
+                "metadata_health": False,
+                "timestamp_repair": False,
+            },
+            "plex_instances": [],
+        })
+        self.assertFalse(parsed.features.trash_removal)
+        self.assertFalse(parsed.features.metadata_health)
+        self.assertFalse(parsed.features.timestamp_repair)
+
+    def test_disabled_trash_removal_has_no_jobs_or_status_refresh(self):
+        target = AppConfig(
+            instances=[],
+            features=FeatureConfig(trash_removal=False),
+        )
+        with patch.object(app.scheduler, "remove_all_jobs") as remove_jobs, \
+             patch.object(app.scheduler, "add_job") as add_job, \
+             patch.object(app.threading, "Thread") as thread:
+            app._setup_scheduler(target)
+            app._start_readonly_status_refresh(target, {})
+        remove_jobs.assert_called_once_with()
+        add_job.assert_not_called()
+        thread.assert_not_called()
+
+    def test_disabled_features_reject_manual_operations(self):
+        target = AppConfig(
+            instances=[],
+            features=FeatureConfig(
+                trash_removal=False,
+                metadata_health=False,
+                timestamp_repair=False,
+            ),
+        )
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_csrf_token"] = "known-token"
+        headers = {"X-CSRF-Token": "known-token"}
+        with patch.object(app, "config", target), \
+             patch.object(app.threading, "Thread") as thread:
+            responses = [
+                client.post("/api/run/all", headers=headers),
+                client.post("/api/dryrun/all", headers=headers),
+                client.post("/api/run/Plex/Movies", headers=headers),
+                client.post("/api/scheduling", json={"enabled": True}, headers=headers),
+                client.post("/api/metadata-audit/run", json={"instance": "Plex"}, headers=headers),
+                client.post("/api/timestamp-repair/audit", json={"instance": "Plex"}, headers=headers),
+                client.post("/api/timestamp-repair/run", json={"instance": "Plex"}, headers=headers),
+            ]
+        self.assertTrue(all(response.status_code == 409 for response in responses))
+        thread.assert_not_called()
+
+
 class MetadataAuditTests(unittest.TestCase):
     def test_metadata_health_ignores_round_trip_through_config_builder(self):
         raw = {
@@ -549,9 +610,48 @@ class MetadataAuditTests(unittest.TestCase):
         html = app.app.test_client().get("/").get_data(as_text=True)
         self.assertIn("Metadata Health", html)
         self.assertIn("Scan all servers", html)
+        self.assertIn("Collapse all", html)
+        self.assertIn("renderSingleServerMetadata", html)
+        self.assertIn("Libraries on", html)
+        self.assertIn("Custom cron expression", html)
+        self.assertIn("data-schedule-cron", html)
+        self.assertIn("Folders Emptyarr may repair", html)
+        self.assertIn("Use this database", html)
+        self.assertIn("Plex timestamp", html)
+        self.assertIn("Filesystem timestamp", html)
+        self.assertIn("settingsSave('timestamp-repair')", html)
+        self.assertIn("setAllRepairDetails(true)", html)
+        self.assertIn("setAllRepairDetails(false)", html)
+        self.assertIn("data-repair-toggle", html)
+        self.assertNotIn("<strong style=\"color:var(--bright);\">Runtime:</strong>", html)
         self.assertIn("Show details", html)
         self.assertIn("read-only", html)
         self.assertIn("affect Empty Trash safety decisions", html)
+
+    def test_settings_are_split_and_features_have_visibility_hooks(self):
+        html = app.app.test_client().get("/").get_data(as_text=True)
+        self.assertIn('id="ss-plex"', html)
+        self.assertIn('id="ss-trash-removal"', html)
+        self.assertIn('id="ss-features"', html)
+        self.assertIn('data-feature="trash_removal"', html)
+        self.assertIn('data-feature="metadata_health"', html)
+        self.assertIn('data-feature="timestamp_repair"', html)
+        self.assertIn("renderTrashRemovalSettings", html)
+        self.assertIn("applyFeatureVisibility", html)
+        self.assertIn("settingsSave('plex')", html)
+        self.assertIn("settingsSave('metadata-health')", html)
+
+    def test_metadata_status_includes_configured_libraries_before_scan(self):
+        library = LibraryConfig("Movies", "physical", [], section_id="1")
+        target_config = AppConfig(instances=[PlexInstanceConfig(
+            "Plex", "http://plex:32400", "token", [library],
+        )])
+        with patch.object(app, "config", target_config), \
+             patch.object(app, "_read_metadata_audits", return_value={}):
+            result = app.app.test_client().get("/api/metadata-audit/status").get_json()
+        self.assertEqual(result["libraries"]["Plex"], [
+            {"name": "Movies", "type": "physical"},
+        ])
 
     def test_ignored_metadata_library_is_not_requested(self):
         movies = LibraryConfig("Movies", "physical", [], section_id="1")
@@ -1021,6 +1121,18 @@ class SafetyTests(unittest.TestCase):
 
 
 class LiveConfigTests(unittest.TestCase):
+    def test_runtime_config_save_does_not_restart_readonly_health_refresh(self):
+        old_config = app.config
+        old_clients = app.plex_clients
+        try:
+            with patch.object(app, "_setup_scheduler"), \
+                 patch.object(app, "_start_readonly_status_refresh") as refresh:
+                app._apply_runtime_config(AppConfig(instances=[]))
+            refresh.assert_not_called()
+        finally:
+            app.config = old_config
+            app.plex_clients = old_clients
+
     def test_invalid_log_storage_policy_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "Total log storage"):
             app._validate_raw_config({

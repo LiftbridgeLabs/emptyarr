@@ -114,7 +114,10 @@ class RepairWorkerApiTests(unittest.TestCase):
         }
         response = self._request("POST", "/api/v1/audit", payload)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["distinct_files"], 1)
+        self.assertEqual(response.get_json()["distinct_files"], 0)
+        self.assertEqual(
+            response.get_json()["path_state_counts"]["missing_path"], 1,
+        )
 
     def test_worker_rejects_controller_supplied_paths_outside_mount_roots(self):
         payload = {
@@ -274,6 +277,15 @@ class RepairWorkerControllerTests(unittest.TestCase):
         self.assertIn("Copy worker Compose", html)
         self.assertIn("Discover databases", html)
         self.assertIn("EMPTYARR_ROLE=repair-worker", html)
+        self.assertIn("EMPTYARR_WORKER_DATA_DIR:?Set an absolute", html)
+        self.assertIn("EMPTYARR_WORKER_TOKEN:?Paste the pairing secret", html)
+        self.assertNotIn("./emptyarr-worker-data:/app/data", html)
+        self.assertIn("Assign at least one Plex instance to this worker", html)
+        self.assertIn("1. Add a worker", html)
+        self.assertIn("Assign &amp; configure", html)
+        self.assertIn("function assignRepairWorker", html)
+        self.assertIn("scrollToRepairInstance", html)
+        self.assertIn("Complete both path fields to unlock Compose", html)
 
     def test_repair_dashboard_uses_large_instance_metric_layout(self):
         html = app.app.test_client().get("/").get_data(as_text=True)

@@ -2,6 +2,13 @@
 # Copy this to config.yml and edit to match your setup.
 # The setup wizard at http://YOUR_IP:8222 can generate this for you.
 
+# Disable modules you do not use. Disabled modules are hidden from the UI and
+# their scheduled/manual operations are blocked.
+features:
+  trash_removal: true
+  metadata_health: true
+  timestamp_repair: true
+
 discord_webhook: https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN
 
 log_level: INFO
