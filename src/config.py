@@ -39,12 +39,21 @@ class LibraryConfig:
 @dataclass
 class TimestampRepairConfig:
     enabled: bool = False
+    worker: str = "local"
     database_path: str = ""
     allowed_prefixes: List[str] = field(default_factory=list)
     max_files_per_folder: int = 5
     scan_timeout_seconds: int = 1800
     poll_interval_seconds: int = 5
     heartbeat_seconds: int = 30
+
+
+@dataclass
+class RepairWorkerConfig:
+    name: str
+    url: str
+    token: str
+    controller_url: str
 
 
 # ── Plex instance config ──────────────────────────────────────────────────────
@@ -93,6 +102,7 @@ class NotificationDestination:
 @dataclass
 class AppConfig:
     instances: List[PlexInstanceConfig]
+    repair_workers: List[RepairWorkerConfig] = field(default_factory=list)
     discord_webhook: str = ""
     notify: NotifyConfig = field(default_factory=NotifyConfig)
     notification_destinations: List[NotificationDestination] = field(default_factory=list)
@@ -207,6 +217,7 @@ def _load_instance(raw: dict) -> PlexInstanceConfig:
         allowed_prefixes = []
     repair = TimestampRepairConfig(
         enabled=bool(repair_raw.get("enabled", False)),
+        worker=str(repair_raw.get("worker", "local")).strip() or "local",
         database_path=str(repair_raw.get("database_path", "")),
         allowed_prefixes=[str(path) for path in allowed_prefixes],
         max_files_per_folder=int(repair_raw.get("max_files_per_folder", 5)),
@@ -298,6 +309,24 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
     log_max_total_size_mb = int(logging_raw.get("max_total_size_mb", 50))
     log_retention_days = int(logging_raw.get("retention_days", 14))
 
+    workers_raw = raw.get("timestamp_repair_workers", [])
+    if not isinstance(workers_raw, list):
+        workers_raw = []
+    repair_workers = []
+    for item in workers_raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        safe = name.upper().replace(" ", "_").replace("-", "_")
+        repair_workers.append(RepairWorkerConfig(
+            name=name,
+            url=str(item.get("url", "")).strip(),
+            token=_env_override(
+                f"EMPTYARR_WORKER_TOKEN_{safe}", str(item.get("token", "")),
+            ),
+            controller_url=str(item.get("controller_url", "")).strip(),
+        ))
+
     instances = [_load_instance(inst) for inst in raw.get("plex_instances", [])]
 
     if not instances:
@@ -305,6 +334,7 @@ def parse_config(raw: dict, config_missing: bool = False) -> AppConfig:
 
     return AppConfig(
         instances           = instances,
+        repair_workers      = repair_workers,
         discord_webhook     = discord,
         notify              = notify,
         notification_destinations = notification_destinations,

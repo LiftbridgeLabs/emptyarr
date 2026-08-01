@@ -479,7 +479,11 @@ def run_library(instance: PlexInstanceConfig, library: LibraryConfig,
                 "A run is already in progress")
         return
     try:
-        with lease(instance.name) as (acquired, reason):
+        with lease(
+            instance.name,
+            operation="empty_trash",
+            queue_empty_trash=True,
+        ) as (acquired, reason):
             if not acquired:
                 message = f"Plex maintenance busy — {reason}; trash empty skipped"
                 logger.warning(f"[{instance.name} / {library.name}] {message}")

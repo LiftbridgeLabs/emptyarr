@@ -12,6 +12,7 @@ echo "      emptyarr"
 echo "-------------------------------------"
 echo "  PUID: ${PUID}"
 echo "  PGID: ${PGID}"
+echo "  Role: ${EMPTYARR_ROLE:-controller}"
 echo "-------------------------------------"
 echo ""
 
@@ -31,7 +32,13 @@ fi
 # Only chown dirs we control — NOT mounted volumes (they may be read-only)
 # /app/src, /app/templates etc are in the image and owned by root at build time
 # /app/data may be a read-only mount so we skip it
-chown -R "${PUID}:${PGID}" /app/src /app/templates /app/app.py 2>/dev/null || true
+chown -R "${PUID}:${PGID}" /app/src /app/templates /app/app.py /app/worker.py 2>/dev/null || true
+
+if [ "${EMPTYARR_ROLE:-controller}" = "repair-worker" ]; then
+    mkdir -p /app/data/worker
+    chown -R "${PUID}:${PGID}" /app/data/worker
+    set -- gunicorn --bind 0.0.0.0:8223 --workers 1 --threads 4 --timeout 3700 worker:app
+fi
 
 # Drop privileges and run the app
 exec gosu "${PUID}:${PGID}" "$@"

@@ -14,7 +14,7 @@ RUN mkdir -p /app/data && touch /app/data/config.yml
 COPY requirements.txt .
 RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 
-COPY app.py entrypoint.sh ./
+COPY app.py worker.py entrypoint.sh ./
 COPY src ./src
 COPY static ./static
 COPY templates ./templates
@@ -22,7 +22,7 @@ COPY templates ./templates
 RUN chmod +x /app/entrypoint.sh && \
     chown -R appuser:appgroup /app
 
-EXPOSE 8222
+EXPOSE 8222 8223
 
 # entrypoint.sh drops privileges to PUID/PGID via gosu
 ENTRYPOINT ["/app/entrypoint.sh"]

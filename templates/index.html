@@ -286,7 +286,7 @@ nav{
 .recent-overview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .text-link{border:0;background:none;color:var(--accent2);font:inherit;font-size:12px;cursor:pointer;}
 .activity-list{display:flex;flex-direction:column;}
-.activity-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:11px;width:100%;padding:11px 0;border:0;border-top:1px solid var(--border);background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer;}
+.activity-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:13px;width:100%;padding:15px 0;border:0;border-top:1px solid var(--border);background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer;}
 .activity-item:hover{background:var(--surface2);}
 .activity-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:5px;}
 .activity-status{width:9px;height:9px;border-radius:50%;background:var(--muted);}
@@ -294,15 +294,15 @@ nav{
 .activity-status.error{background:var(--fail);}
 .activity-status.skipped{background:var(--warn);}
 .activity-status.dry_run{background:var(--info);}
-.activity-name{color:var(--bright);font-size:13px;font-weight:650;line-height:1.35;overflow-wrap:anywhere;}
-.activity-instance{color:var(--muted);font-size:11px;margin-top:1px;}
-.activity-time{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;}
+.activity-name{color:var(--bright);font-size:15px;font-weight:650;line-height:1.4;overflow-wrap:anywhere;}
+.activity-instance{color:var(--muted);font-size:13px;margin-top:2px;}
+.activity-time{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap;}
 .activity-open{color:var(--accent2);font-size:16px;line-height:1;}
 .run-detail-card{max-width:760px;}
 .run-detail-summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
 .run-detail-message{color:var(--bright);font-size:14px;font-weight:650;margin-bottom:5px;}
-.run-detail-time{color:var(--muted);font-family:var(--mono);font-size:10px;}
-.run-detail-empty{color:var(--muted);font-size:11px;font-style:italic;}
+.run-detail-time{color:var(--muted);font-family:var(--mono);font-size:12px;}
+.run-detail-empty{color:var(--muted);font-size:13px;font-style:italic;}
 .instance-section{margin-bottom:34px;}
 .instance-header-row{
   display:flex;
@@ -403,8 +403,8 @@ nav{
 .filters{display:flex;gap:5px;}
 .filter-btn{
   font-family:var(--mono);
-  font-size:10px;
-  padding:3px 10px;
+  font-size:12px;
+  padding:6px 12px;
   border-radius:20px;
   border:1px solid var(--border2);
   background:transparent;
@@ -419,28 +419,28 @@ table.htable{width:100%;border-collapse:collapse;}
 .htable th{
   text-align:left;
   font-family:var(--mono);
-  font-size:10px;
+  font-size:12px;
   text-transform:uppercase;
   letter-spacing:1px;
   color:var(--muted);
-  padding:10px 14px;
+  padding:13px 16px;
   border-bottom:1px solid var(--border);
   font-weight:500;
   background:var(--bg2);
 }
-.htable td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;}
+.htable td{padding:14px 16px;border-bottom:1px solid var(--border);vertical-align:top;font-size:14px;}
 .htable tr:last-child td{border-bottom:none;}
 .htable tr.data-row{cursor:pointer;}
 .htable tr.data-row:hover td{background:rgba(255,255,255,.02);}
 
-.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:4px;font-family:var(--mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
 .badge.success{background:var(--pass-soft);color:var(--pass);}
 .badge.skipped{background:var(--warn-soft);color:var(--warn2);}
 .badge.error  {background:var(--fail-soft);color:var(--fail2);}
 .badge.dry_run{background:var(--info-soft);color:var(--info2);}
 
-.inst-chip{font-family:var(--mono);font-size:10px;color:var(--text2);background:var(--surface2);border-radius:4px;padding:2px 6px;}
-.lib-chip {font-family:var(--mono);font-size:10px;color:var(--accent2);background:var(--accent-soft);border-radius:4px;padding:2px 6px;}
+.inst-chip{font-family:var(--mono);font-size:12px;color:var(--text2);background:var(--surface2);border-radius:4px;padding:3px 7px;}
+.lib-chip {font-family:var(--mono);font-size:12px;color:var(--accent2);background:var(--accent-soft);border-radius:4px;padding:3px 7px;}
 .check-dots{display:flex;gap:3px;flex-wrap:wrap;}
 .cdot{width:7px;height:7px;border-radius:50%;}
 .cdot.pass{background:var(--pass);}
@@ -451,17 +451,17 @@ table.htable{width:100%;border-collapse:collapse;}
 .expand-td{padding:0!important;background:var(--bg)!important;}
 .expand-inner{padding:14px 20px;border-bottom:1px solid var(--border);}
 .expand-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
-.expand-section-title{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;}
-.check-detail-row{display:flex;align-items:flex-start;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;}
+.expand-section-title{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;}
+.check-detail-row{display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;}
 .check-detail-row:last-child{border-bottom:none;}
 .cdn{color:var(--text);font-weight:500;min-width:100px;flex-shrink:0;}
 .cdd{color:var(--muted);line-height:1.4;}
 .removed-scroll{display:flex;flex-direction:column;gap:2px;max-height:160px;overflow-y:auto;}
-.removed-entry{font-size:11px;color:var(--text);padding:3px 0;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:baseline;}
+.removed-entry{font-size:13px;color:var(--text);padding:6px 0;border-bottom:1px solid var(--border);display:flex;gap:7px;align-items:baseline;}
 .removed-entry:last-child{border-bottom:none;}
 .re-year{color:var(--muted);font-family:var(--mono);font-size:10px;}
 .re-type{font-family:var(--mono);font-size:9px;color:var(--muted);background:var(--surface2);border-radius:2px;padding:0 4px;text-transform:uppercase;}
-.empty-msg{text-align:center;padding:32px;color:var(--muted);font-size:12px;}
+.empty-msg{text-align:center;padding:20px;color:var(--muted);font-size:14px;}
 
 /* ── SETTINGS PAGE ── */
 .settings-layout{display:grid;grid-template-columns:250px minmax(0,1fr);gap:30px;}
@@ -716,16 +716,16 @@ dialog.overlay::backdrop{background:transparent;}
   .app-footer{align-items:flex-start;flex-direction:column;}
   .footer-links{flex-wrap:wrap;}
 }
-.repair-summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:16px;}
-.repair-summary-card,.repair-folder-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:var(--shadow);}
+.repair-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:18px;}
+.repair-summary-card,.repair-folder-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;box-shadow:var(--shadow);}
 .repair-summary-card{cursor:pointer;transition:border-color .15s,transform .15s;}
 .repair-summary-card:hover{border-color:var(--accent);transform:translateY(-1px);}
-.repair-count{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--bright);}
-.repair-folder-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:16px;}
+.repair-count{font-family:var(--mono);font-size:36px;font-weight:700;color:var(--bright);margin-top:8px;}
+.repair-folder-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-top:18px;}
 .repair-folder-card{display:flex;flex-direction:column;min-height:220px;}
-.repair-folder-title{font-size:16px;font-weight:700;color:var(--bright);margin-bottom:3px;}
+.repair-folder-title{font-size:18px;font-weight:700;color:var(--bright);margin-bottom:4px;}
 .repair-files{margin:12px 0;max-height:150px;overflow:auto;border-top:1px solid var(--border);}
-.repair-file{padding:8px 0;border-bottom:1px solid var(--border);font-size:11px;word-break:break-word;}
+.repair-file{padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;word-break:break-word;}
 .repair-warning{padding:12px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);border-radius:8px;color:var(--warn2);font-size:12px;margin:14px 0;}
 .repair-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
 </style>
@@ -992,6 +992,9 @@ dialog.overlay::backdrop{background:transparent;}
         <button class="settings-nav-item active" onclick="showSettingsSection('plex',this)">
           📺 Plex Instances
         </button>
+        <button class="settings-nav-item" onclick="showSettingsSection('timestamp-repair',this)">
+          🛠️ Timestamp Repair
+        </button>
         <button class="settings-nav-item" onclick="showSettingsSection('providers',this)">
           ☁️ Providers
         </button>
@@ -1061,6 +1064,26 @@ dialog.overlay::backdrop{background:transparent;}
           💾 Save Configuration
         </button>
         <span id="settings-save-result" style="margin-left:12px;font-size:12px;"></span>
+      </div>
+
+      <!-- Timestamp Repair -->
+      <div class="settings-section" id="ss-timestamp-repair">
+        <div class="settings-section-title">Timestamp Repair</div>
+        <div class="settings-section-desc">Configure local Plex databases or pair one repair-only worker. Empty Trash remains controlled by this main Emptyarr instance.</div>
+        <div class="repair-warning">
+          Docker mounts cannot be created from inside Emptyarr. Add each Plex database directory read-only and only the narrow symlink prefixes you approve read/write, then use Discover databases below.
+          <details style="margin-top:10px;color:var(--text2);"><summary style="cursor:pointer;color:var(--warn2);font-weight:650;">How do I find the Plex database directory on Unraid?</summary><div style="margin-top:8px;line-height:1.6;">Open the Plex container&rsquo;s edit screen and note its host appdata path. Inside that appdata directory, the required folder ends with <code>Library/Application Support/Plex Media Server/Plug-in Support/Databases</code>. Map that exact directory read-only to a distinct path such as <code>/plex-db/streamstead</code>. The Discover button finds the database file after the container is recreated.</div></details>
+        </div>
+        <div class="card" style="margin-bottom:18px;">
+          <div class="card-header">
+            <div><div class="card-title">Remote repair workers</div><div class="form-hint">Only needed for a Plex server on another machine, such as vm-altmount.</div></div>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="addRepairWorker()">+ Add worker</button>
+          </div>
+          <div class="card-body" id="repair-workers-settings"></div>
+        </div>
+        <div id="repair-instances-settings"></div>
+        <button class="btn btn-primary" onclick="settingsSave()" id="settings-save-btn-repair">💾 Save Timestamp Repair Setup</button>
+        <span id="settings-save-result-repair" style="margin-left:12px;font-size:13px;"></span>
       </div>
 
       <!-- Providers -->
@@ -1557,7 +1580,7 @@ function renderRepairOverview(status) {
   document.getElementById('repair-active').innerHTML = active ? `
     <div class="card" style="margin-bottom:14px;border-color:var(--warn);"><div class="card-body">
       <strong>${h(active.state.replaceAll('_',' '))}</strong> &middot; ${h(active.instance)} / ${h(active.library)}<br>
-      <span style="font-size:11px;color:var(--muted);">${h(active.folder)} &middot; ${Number(active.scan_elapsed_seconds||0)}s elapsed &middot; heartbeat ${h(fmtAgo(active.last_heartbeat))}</span>
+      <span style="font-size:13px;color:var(--muted);">${h(active.folder)} &middot; ${Number(active.scan_elapsed_seconds||0)}s elapsed &middot; heartbeat ${h(fmtAgo(active.last_heartbeat))}</span>
       <div style="margin-top:10px;display:flex;gap:8px;"><button class="btn btn-warn btn-sm" onclick="cancelRepair()">Cancel safely</button>${active.state === 'recovery_required' ? '<button class="btn btn-primary btn-sm" onclick="recoverRepair()">Recover</button>' : ''}</div>
     </div></div>` : (status.state === 'failed' && status.error ? `<div class="repair-warning" style="border-color:rgba(239,68,68,.4);color:var(--fail2);">Last repair attempt failed: ${h(status.error)}</div>` : '');
   const audits = status.audits || {};
@@ -1573,13 +1596,14 @@ function renderRepairOverview(status) {
       const count = group.folders.reduce((total,folder)=>total+folder.files.length,0);
       const folderCount = group.folders.length;
       return `<div class="repair-summary-card" ${audit ? `data-repair-instance="${h(instance.name)}" data-repair-section="${h(group.section)}" data-repair-library="${h(group.library)}"` : ''}>
-      <div style="display:flex;justify-content:space-between;gap:8px;"><div><div class="repair-folder-title">${h(instance.name)} / ${h(group.library)}</div><div style="font-size:11px;color:var(--muted);">${audit ? `Audited ${h(fmtAgo(audit.audited_at))}` : 'Run the first read-only audit'}</div></div><span class="badge ${instance.enabled?'success':'skipped'}">${instance.enabled?'enabled':'disabled'}</span></div>
-      <div class="repair-count">${count}</div><div style="font-size:11px;color:var(--muted);">affected file${count===1?'':'s'} in ${folderCount} folder${folderCount===1?'':'s'}</div>
-      <div style="margin-top:12px;display:flex;gap:8px;"><button class="btn btn-primary btn-sm" data-audit-instance="${h(instance.name)}" ${instance.enabled&&!status.running?'':'disabled'}>Audit</button>${audit ? '<span class="form-hint" style="margin:auto 0 0;">Open details &rarr;</span>' : ''}</div>
+      <div style="display:flex;justify-content:space-between;gap:12px;"><div><div class="repair-folder-title">${h(instance.name)} / ${h(group.library)}</div><div style="font-size:13px;color:var(--muted);">${audit ? `Audited ${h(fmtAgo(audit.audited_at))}` : `${h(instance.readiness)} · ${instance.worker==='local'?'main container':h(instance.worker)}`}</div></div><span class="badge ${instance.ready?'success':'skipped'}">${instance.ready?'ready':'setup required'}</span></div>
+      <div class="repair-count">${count}</div><div style="font-size:13px;color:var(--muted);">affected file${count===1?'':'s'} in ${folderCount} folder${folderCount===1?'':'s'}</div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;"><button class="btn btn-primary" data-audit-instance="${h(instance.name)}" ${instance.ready&&!status.running?'':'disabled'}>Audit now</button>${!instance.ready?`<button class="btn btn-secondary" data-configure-repair="${h(instance.name)}">Configure</button>`:audit?'<span class="form-hint" style="margin:auto 0 0;">Open library details &rarr;</span>':''}</div>
     </div>`; });
   }).join('') || '<div class="empty-msg">No Plex instances are configured.</div>';
   document.querySelectorAll('[data-repair-instance]').forEach(card => card.addEventListener('click', () => openRepairLibrary(card.dataset.repairInstance,card.dataset.repairSection,card.dataset.repairLibrary)));
   document.querySelectorAll('[data-audit-instance]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); auditRepair(button.dataset.auditInstance); }));
+  document.querySelectorAll('[data-configure-repair]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); showPage('settings',document.getElementById('nav-settings')); const settingsButton=[...document.querySelectorAll('.settings-nav-item')].find(item=>item.textContent.includes('Timestamp Repair')); showSettingsSection('timestamp-repair',settingsButton); }));
 }
 
 async function auditRepair(instance) {
@@ -1630,6 +1654,7 @@ function showSettingsSection(name, btn) {
   if (btn) btn.classList.add('active');
   if (name === 'providers') loadProviderStatus();
   if (name === 'security')  loadApiToken();
+  if (name === 'timestamp-repair') renderRepairSettings();
   if (name === 'general') startLogViewer();
   else stopLogViewer();
 }
@@ -2018,7 +2043,7 @@ async function refreshLogView() {
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-let _settingsData = { instances: [], default_cron: '0 * * * *', discord_webhook: '', notification_destinations: [], log_level: 'INFO', log_max_file_size_mb: 5, log_max_total_size_mb: 50, log_retention_days: 14, max_trash_items: 1000, max_trash_percent: 25, notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
+let _settingsData = { instances: [], repair_workers: [], default_cron: '0 * * * *', discord_webhook: '', notification_destinations: [], log_level: 'INFO', log_max_file_size_mb: 5, log_max_total_size_mb: 50, log_retention_days: 14, max_trash_items: 1000, max_trash_percent: 25, notify_emptied: true, notify_health_fail: true, notify_error: true, notify_clean: false, notify_skip: false };
 
 async function loadSettings() {
   try {
@@ -2046,11 +2071,27 @@ async function loadSettings() {
     _settingsData.notify_error       = cfg.notify?.on_error       ?? true;
     _settingsData.notify_clean       = cfg.notify?.on_clean       ?? false;
     _settingsData.notify_skip        = cfg.notify?.on_skip        ?? false;
+    _settingsData.repair_workers = (cfg.timestamp_repair_workers || []).map(worker => ({
+      name: worker.name || '',
+      url: worker.url || '',
+      token: worker.token || '',
+      controller_url: worker.controller_url || '',
+    }));
     _settingsData.instances = (cfg.plex_instances || []).map(inst => ({
       name:      inst.name || '',
       url:       inst.url  || '',
       token:     inst.token || '',
       machine_id: inst.machine_id || '',
+      timestamp_repair: {
+        enabled: inst.timestamp_repair?.enabled === true,
+        worker: inst.timestamp_repair?.worker || 'local',
+        database_path: inst.timestamp_repair?.database_path || '',
+        allowed_prefixes: Array.isArray(inst.timestamp_repair?.allowed_prefixes) ? inst.timestamp_repair.allowed_prefixes : [],
+        max_files_per_folder: inst.timestamp_repair?.max_files_per_folder ?? 5,
+        scan_timeout_seconds: inst.timestamp_repair?.scan_timeout_seconds ?? 1800,
+        poll_interval_seconds: inst.timestamp_repair?.poll_interval_seconds ?? 5,
+        heartbeat_seconds: inst.timestamp_repair?.heartbeat_seconds ?? 30,
+      },
       libraries: (inst.libraries || []).map(lib => ({
         name:  lib.name  || '',
         type:  lib.type  || 'physical',
@@ -2065,6 +2106,7 @@ async function loadSettings() {
       }))
     }));
     renderSettingsInstances();
+    renderRepairSettings();
     loadGlobalScheduleControls();
     // Populate notification fields
     document.getElementById('s-discord').value = _settingsData.discord_webhook;
@@ -2137,6 +2179,149 @@ function renderSettingsInstances() {
       </div>
     </div>
   `).join('');
+}
+
+function repairConfig(instance) {
+  instance.timestamp_repair ||= {
+    enabled:false, worker:'local', database_path:'', allowed_prefixes:[],
+    max_files_per_folder:5, scan_timeout_seconds:1800,
+    poll_interval_seconds:5, heartbeat_seconds:30,
+  };
+  return instance.timestamp_repair;
+}
+
+function generateRepairWorkerToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, value => value.toString(16).padStart(2,'0')).join('');
+}
+
+function addRepairWorker() {
+  _settingsData.repair_workers.push({
+    name:'altmount-worker', url:'http://vm-altmount:8223',
+    controller_url:`${location.protocol}//${location.hostname}:${location.port || (location.protocol==='https:'?'443':'80')}`,
+    token:generateRepairWorkerToken(),
+  });
+  renderRepairSettings();
+}
+
+function removeRepairWorker(index) {
+  const worker = _settingsData.repair_workers[index];
+  if (!confirm(`Remove repair worker "${worker.name}"? Assigned Plex instances will be returned to local mode.`)) return;
+  _settingsData.instances.forEach(instance => {
+    const repair = repairConfig(instance);
+    if (repair.worker === worker.name) repair.worker = 'local';
+  });
+  _settingsData.repair_workers.splice(index,1);
+  renderRepairSettings();
+}
+
+function renameRepairWorker(index, name) {
+  const previous = _settingsData.repair_workers[index].name;
+  _settingsData.repair_workers[index].name = name.trim();
+  _settingsData.instances.forEach(instance => {
+    const repair = repairConfig(instance);
+    if (repair.worker === previous) repair.worker = name.trim();
+  });
+  renderRepairSettings();
+}
+
+function repairWorkerOptions(selected) {
+  return [`<option value="local" ${selected==='local'?'selected':''}>This Emptyarr container</option>`,
+    ..._settingsData.repair_workers.map(worker => `<option value="${h(worker.name)}" ${selected===worker.name?'selected':''}>Remote: ${h(worker.name)}</option>`)
+  ].join('');
+}
+
+function workerCompose(index) {
+  const worker = _settingsData.repair_workers[index];
+  const assigned = _settingsData.instances.filter(instance => repairConfig(instance).worker === worker.name);
+  const databaseDirs = [...new Set(assigned.map(instance => repairConfig(instance).database_path.replace(/[\\/][^\\/]+$/, '')).filter(Boolean))];
+  const prefixes = [...new Set(assigned.flatMap(instance => repairConfig(instance).allowed_prefixes).filter(Boolean))];
+  const volumes = [
+    ...databaseDirs.map((path,i) => `      - HOST_PLEX_DATABASE_DIR_${i+1}:${path}:ro`),
+    ...prefixes.map((path,i) => `      - HOST_REPAIR_PREFIX_${i+1}:${path}:rw,slave`),
+  ];
+  return `services:\n  emptyarr-repair-worker:\n    image: liftbridgelabs/emptyarr:latest\n    container_name: emptyarr-repair-worker\n    restart: unless-stopped\n    ports:\n      - "8223:8223"\n    environment:\n      - EMPTYARR_ROLE=repair-worker\n      - EMPTYARR_WORKER_NAME=${worker.name}\n      - EMPTYARR_WORKER_TOKEN=${worker.token}\n      - EMPTYARR_WORKER_DATABASE_ROOTS=${databaseDirs.join(',') || '/plex-db'}\n      - EMPTYARR_WORKER_MEDIA_ROOTS=${prefixes.join(',') || '/repair-media'}\n      - PUID=99\n      - PGID=100\n    volumes:\n      - ./emptyarr-worker-data:/app/data\n${volumes.length ? volumes.join('\n') : '      # Assign a Plex instance below to generate required mount placeholders.'}`;
+}
+
+async function copyWorkerCompose(index) {
+  const text = workerCompose(index);
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    else throw new Error('Clipboard API unavailable');
+  } catch (_) {
+    const area = document.createElement('textarea');
+    area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
+    document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
+  }
+  toast('Worker Compose copied. Replace every HOST_* placeholder before deploying.', 'pass');
+}
+
+async function testRepairWorker(index) {
+  const worker = _settingsData.repair_workers[index];
+  const result = document.getElementById(`repair-worker-test-${index}`);
+  result.textContent = 'Testing…';
+  try {
+    const response = await fetch('/api/timestamp-repair/worker-test', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(worker),
+    });
+    const data = await response.json();
+    result.textContent = response.ok ? `✓ Connected · ${data.name}` : `✗ ${data.error}`;
+    result.style.color = response.ok ? 'var(--pass)' : 'var(--fail2)';
+  } catch (_) {
+    result.textContent = '✗ Worker test failed'; result.style.color = 'var(--fail2)';
+  }
+}
+
+function renderRepairSettings() {
+  const workers = document.getElementById('repair-workers-settings');
+  const instances = document.getElementById('repair-instances-settings');
+  if (!workers || !instances) return;
+  workers.innerHTML = _settingsData.repair_workers.length ? _settingsData.repair_workers.map((worker,index) => `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;"><strong style="font-size:16px;color:var(--bright);">${h(worker.name || 'Unnamed worker')}</strong><button class="btn btn-danger btn-sm" onclick="removeRepairWorker(${index})">Remove</button></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Worker name</label><input class="form-input" value="${h(worker.name)}" onchange="renameRepairWorker(${index},this.value)"></div>
+        <div class="form-group"><label class="form-label">Worker URL from controller</label><input class="form-input" value="${h(worker.url)}" placeholder="http://vm-altmount:8223" onchange="_settingsData.repair_workers[${index}].url=this.value.trim()"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Controller URL from worker</label><input class="form-input" value="${h(worker.controller_url)}" placeholder="http://UNRAID-IP:8222" onchange="_settingsData.repair_workers[${index}].controller_url=this.value.trim()"><div class="form-hint">The VM worker uses this address only for approved path-limited Plex scans.</div></div>
+      <div class="form-group"><label class="form-label">Pairing secret</label><div style="display:flex;gap:8px;"><input class="form-input" type="password" value="${h(worker.token)}" onchange="_settingsData.repair_workers[${index}].token=this.value"><button class="btn btn-secondary" onclick="_settingsData.repair_workers[${index}].token=generateRepairWorkerToken();renderRepairSettings()">Regenerate</button></div></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><button class="btn btn-secondary btn-sm" onclick="testRepairWorker(${index})">Test connection</button><button class="btn btn-secondary btn-sm" onclick="copyWorkerCompose(${index})">Copy worker Compose</button><span id="repair-worker-test-${index}" class="form-hint" style="margin:0;"></span></div>
+    </div>`).join('') : '<div class="empty-msg">No remote worker is needed for Plex servers whose database and repair paths are mounted into this container.</div>';
+
+  instances.innerHTML = _settingsData.instances.map((instance,index) => {
+    const repair = repairConfig(instance);
+    return `<div class="card" style="margin-bottom:18px;">
+      <div class="card-header"><div><div class="card-title">${h(instance.name)}</div><div class="form-hint">Manual repair only; this does not change Empty Trash scheduling.</div></div><label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text2);"><input type="checkbox" ${repair.enabled?'checked':''} onchange="repairConfig(_settingsData.instances[${index}]).enabled=this.checked;renderRepairSettings()"> Enable</label></div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Runs on</label><select class="form-input" onchange="repairConfig(_settingsData.instances[${index}]).worker=this.value;renderRepairSettings()">${repairWorkerOptions(repair.worker)}</select></div>
+          <div class="form-group"><label class="form-label">Maximum affected files per folder</label><input class="form-input" type="number" min="1" max="100" value="${repair.max_files_per_folder}" onchange="repairConfig(_settingsData.instances[${index}]).max_files_per_folder=Number(this.value)"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Plex database inside ${repair.worker==='local'?'Emptyarr':h(repair.worker)}</label><div style="display:flex;gap:8px;"><input class="form-input" value="${h(repair.database_path)}" placeholder="/plex-db/server/com.plexapp.plugins.library.db" onchange="repairConfig(_settingsData.instances[${index}]).database_path=this.value.trim()"><button class="btn btn-secondary" onclick="discoverRepairDatabases(${index})">Discover</button></div><div class="form-hint" id="repair-db-result-${index}">Mount the Plex Databases directory read-only; Emptyarr discovers the filename.</div></div>
+        <div class="form-group"><label class="form-label">Writable repair prefixes</label><textarea class="form-input" rows="3" placeholder="One exact container path per line" onchange="repairConfig(_settingsData.instances[${index}]).allowed_prefixes=this.value.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean)">${h(repair.allowed_prefixes.join('\n'))}</textarea><div class="form-hint">These are real provider symlink paths, not a literal folder named “repairable.” Mount only these narrow paths read/write.</div></div>
+        <div id="repair-mount-guide-${index}" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;color:var(--text2);"><strong style="color:var(--bright);">Runtime:</strong> ${repair.worker==='local'?'main Emptyarr container':`remote worker ${h(repair.worker)}`} · database read-only · listed prefixes read/write</div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty-msg">Connect a Plex instance first.</div>';
+}
+
+async function discoverRepairDatabases(index) {
+  const repair = repairConfig(_settingsData.instances[index]);
+  const target = document.getElementById(`repair-db-result-${index}`);
+  target.textContent = 'Searching mounted database roots…';
+  try {
+    const response = await fetch('/api/timestamp-repair/databases', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({worker:repair.worker})});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Discovery failed');
+    if (data.databases.length === 1) {
+      repair.database_path = data.databases[0]; renderRepairSettings();
+      toast('Plex database selected', 'pass'); return;
+    }
+    if (!data.databases.length) { target.textContent = 'No Plex databases found. Check the read-only Docker mount.'; return; }
+    target.innerHTML = `Found ${data.databases.length}. Select one: ` + data.databases.map(path => `<button class="text-link" data-repair-db="${h(path)}" data-repair-index="${index}">${h(path)}</button>`).join(' ');
+    target.querySelectorAll('[data-repair-db]').forEach(button => button.addEventListener('click', () => { repairConfig(_settingsData.instances[Number(button.dataset.repairIndex)]).database_path=button.dataset.repairDb;renderRepairSettings(); }));
+  } catch (error) { target.textContent = error.message; }
 }
 
 function cronDescription(cron) {
@@ -2363,7 +2548,7 @@ function toggleLibSettings(id, button) {
 }
 
 function settingsAddInstance() {
-  _settingsData.instances.push({ name:'', url:'', token:'', libraries:[] });
+  _settingsData.instances.push({ name:'', url:'', token:'', libraries:[], timestamp_repair:{enabled:false,worker:'local',database_path:'',allowed_prefixes:[],max_files_per_folder:5,scan_timeout_seconds:1800,poll_interval_seconds:5,heartbeat_seconds:30} });
   renderSettingsInstances();
   // Open the last instance's first field
   const inputs = document.querySelectorAll('.inst-settings-card input');
@@ -2562,7 +2747,7 @@ async function settingsSave() {
   _settingsData.notify_skip       = document.getElementById('s-notify-skip').checked;
   _settingsData.notification_destinations.forEach((_, index) => syncNotificationDestination(index));
 
-  ['settings-save-btn','settings-save-btn2'].forEach(id => {
+  ['settings-save-btn','settings-save-btn2','settings-save-btn-repair'].forEach(id => {
     const b = document.getElementById(id);
     if (b) { b.disabled = true; b.innerHTML = `<span class="spin"></span> saving…`; }
   });
@@ -2574,7 +2759,7 @@ async function settingsSave() {
       body: JSON.stringify({ ..._settingsData, store_tokens: true })
     });
     const d = await r.json();
-    ['settings-save-result','settings-save-result2','settings-save-result-general'].forEach(id => {
+    ['settings-save-result','settings-save-result2','settings-save-result-general','settings-save-result-repair'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = d.ok
         ? `<span style="color:var(--pass);">✓ Saved and applied</span>`
@@ -2588,7 +2773,7 @@ async function settingsSave() {
   } catch(e) {
     toast('Save failed', 'fail');
   } finally {
-    ['settings-save-btn','settings-save-btn2'].forEach(id => {
+    ['settings-save-btn','settings-save-btn2','settings-save-btn-repair'].forEach(id => {
       const b = document.getElementById(id);
       if (b) { b.disabled = false; b.innerHTML = '💾 Save Configuration'; }
     });

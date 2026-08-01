@@ -38,3 +38,26 @@ services:
       - PUID=99
       - PGID=100
       - TZ=America/New_York
+
+  # Optional repair-only sidecar for a Plex server on another machine. Deploy
+  # this service on that machine, not beside the controller above. The Settings
+  # wizard generates a completed example with per-instance paths and a secret.
+  # emptyarr-repair-worker:
+  #   image: liftbridgelabs/emptyarr:latest
+  #   container_name: emptyarr-repair-worker
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8223:8223"
+  #   environment:
+  #     - EMPTYARR_ROLE=repair-worker
+  #     - EMPTYARR_WORKER_NAME=altmount-worker
+  #     - EMPTYARR_WORKER_TOKEN=replace-with-the-generated-64-character-secret
+  #     - EMPTYARR_WORKER_DATABASE_ROOTS=/plex-db
+  #     - EMPTYARR_WORKER_MEDIA_ROOTS=/mnt/symlink_media/symlinks/provider
+  #     - PUID=99
+  #     - PGID=100
+  #   volumes:
+  #     - ./emptyarr-worker-data:/app/data
+  #     - /host/plex/Databases:/plex-db:ro
+  #     # The destination must exactly match the path stored by Plex.
+  #     - /host/provider-links:/mnt/symlink_media/symlinks/provider:rw,slave

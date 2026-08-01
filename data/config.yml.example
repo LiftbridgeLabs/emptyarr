@@ -64,6 +64,14 @@ auth:
 #   realdebrid:
 #     api_key: YOUR_RD_API_KEY
 
+# Optional repair-only worker on another Plex machine. Normally created from
+# Settings -> Timestamp Repair; the worker receives no Plex token.
+# timestamp_repair_workers:
+#   - name: altmount-worker
+#     url: http://vm-altmount:8223
+#     controller_url: http://unraid-host:8222
+#     token: generate-a-random-secret-of-at-least-32-characters
+
 plex_instances:
   # Physical media server example
   - name: My Plex
@@ -74,6 +82,7 @@ plex_instances:
     # must be a narrow library-facing symlink tree mounted read/write.
     timestamp_repair:
       enabled: false
+      worker: local  # or the name of a timestamp_repair_workers entry
       database_path: /plex-db/com.plexapp.plugins.library.db
       allowed_prefixes:
         - /mnt/symlink_media/symlinks/repair

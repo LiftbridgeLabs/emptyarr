@@ -130,6 +130,13 @@ python -m unittest discover -s tests -v
 - Enabled configuration requires both a read-only database path and at least
   one writable symlink prefix.
 - The repair API rejects folders not present in the latest server-side audit.
+- Repair workers authenticate timestamped requests with HMAC signatures and
+  reject tampering and replay.
+- A worker constrains controller-supplied database and media paths to roots
+  independently configured on that worker container.
+- Workers never receive Plex tokens; scan callbacks are signed and limited to
+  the exact section and folder approved by the controller transaction.
+- An unreachable configured worker fails the shared maintenance gate closed.
 
 ### Web and API security
 
@@ -178,7 +185,7 @@ python -m unittest discover -s tests -v
 
 ## Static and rendered-code validation
 
-- `python -m compileall -q app.py src tests` compiles every Python source file.
+- `python -m compileall -q app.py worker.py src tests` compiles every Python source file.
 - The Flask index is rendered through the test client, every inline script is
   extracted, and Node.js parses the resulting JavaScript with `new Function`.
   This catches errors that only appear after Jinja template rendering.

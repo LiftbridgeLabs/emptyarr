@@ -191,6 +191,7 @@ plex_instances:
     token: ''
     timestamp_repair:
       enabled: false
+      worker: local
       database_path: /plex-db/com.plexapp.plugins.library.db
       allowed_prefixes:
         - /mnt/symlink_media/symlinks/nzbdav
@@ -213,6 +214,34 @@ database directory read-only:
 The writable path must exactly match the path stored by Plex. Emptyarr never
 writes to Plex's database or symlink targets and does not require Docker-socket
 access. Its PUID/PGID must have rename permission on the allowed symlink tree.
+
+Configure this from **Settings → Timestamp Repair**. After the database
+directory is mounted, **Discover** locates
+`com.plexapp.plugins.library.db`; the UI saves the per-server configuration and
+shows whether each instance is ready. Docker isolation means Emptyarr cannot
+create host mounts or infer a host appdata path from a Plex API token.
+
+#### Plex on another machine
+
+Run one repair-only sidecar on the remote Plex machine. This is not another
+Emptyarr controller: it has no dashboard, scheduler, Empty Trash operation,
+notifications, or Plex token. The main Emptyarr remains the only UI and sends
+signed, replay-protected filesystem requests. When Plex must scan a folder, the
+sidecar calls a transaction-limited signed controller endpoint and the main
+Emptyarr performs the Plex HTTP request.
+
+In **Settings → Timestamp Repair**, add a worker, generate its pairing secret,
+assign the remote Plex instance, and use **Copy worker Compose**. Replace each
+`HOST_*` placeholder with the real VM path before deploying it. The sidecar
+requires only:
+
+- its persistent `/app/data` directory;
+- the remote Plex database directory mounted read-only; and
+- explicitly allowed symlink prefixes mounted read/write at the exact paths
+  stored in Plex.
+
+If a configured worker is unreachable, Emptyarr fails closed for maintenance
+because it cannot prove that a rename transaction is not awaiting recovery.
 
 ### Example config
 

@@ -1,11 +1,16 @@
 import logging
 import ipaddress
+import json
 import os
 import secrets
 import threading
+import time
 import urllib.parse
 import yaml
+from datetime import datetime, timezone
 from functools import wraps
+from pathlib import Path
+from types import SimpleNamespace
 from flask import (Flask, jsonify, render_template, request, redirect, url_for,
                    session, send_from_directory)
 
@@ -29,6 +34,9 @@ from src import plex_auth
 from src import notifications
 from src.version import __version__
 from src.timestamp_repair import TimestampRepairManager
+from src.maintenance import lease, set_recovery_check
+from src.repair_worker_client import RepairWorkerClient, validate_worker_url
+from src.worker_auth import SignatureVerifier
 
 LOG_DIR  = os.environ.get("LOG_DIR", "data/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -78,6 +86,16 @@ startup_recovery = timestamp_repair.recover()
 if not startup_recovery.get("ok"):
     logger.error("Timestamp repair startup recovery requires attention: %s",
                  startup_recovery.get("error"))
+
+_worker_signature_verifier = SignatureVerifier()
+_remote_repair_lock = threading.RLock()
+_remote_repair: dict = {}
+_worker_scan_contexts: dict[str, dict] = {}
+_worker_recovery_cache: dict[str, tuple[float, bool]] = {}
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 app = Flask(__name__)
 
@@ -262,7 +280,8 @@ def _validate_library(library, instance_name: str, names: set) -> None:
         _validate_path(path, library_type, context)
 
 
-def _validate_instance(instance, names: set, machine_ids: set) -> None:
+def _validate_instance(instance, names: set, machine_ids: set,
+                       worker_names: set[str]) -> None:
     if not isinstance(instance, dict):
         raise ValueError("Every Plex instance must be an object")
     name = str(instance.get("name", "")).strip()
@@ -280,12 +299,15 @@ def _validate_instance(instance, names: set, machine_ids: set) -> None:
     if not isinstance(repair, dict):
         raise ValueError(f"{name}: timestamp_repair must be an object")
     enabled = bool(repair.get("enabled", False))
+    worker = str(repair.get("worker", "local")).strip() or "local"
     database_path = str(repair.get("database_path", "")).strip()
     prefixes = repair.get("allowed_prefixes", [])
     if not isinstance(prefixes, list) or any(not str(path).strip() for path in prefixes):
         raise ValueError(f"{name}: timestamp repair prefixes must be a list of paths")
     if enabled and (not database_path or not prefixes):
         raise ValueError(f"{name}: enabled timestamp repair requires a database path and allowed prefixes")
+    if enabled and worker != "local" and worker not in worker_names:
+        raise ValueError(f"{name}: timestamp repair worker '{worker}' is not configured")
     if not 1 <= int(repair.get("max_files_per_folder", 5)) <= 100:
         raise ValueError(f"{name}: timestamp repair file limit must be between 1 and 100")
     timeout = int(repair.get("scan_timeout_seconds", 1800))
@@ -387,10 +409,27 @@ def _validate_raw_config(raw: dict) -> AppConfig:
     _validate_schedule(raw)
     _validate_logging(raw)
     _validate_notifications(raw)
+    workers = raw.get("timestamp_repair_workers", [])
+    if not isinstance(workers, list):
+        raise ValueError("timestamp_repair_workers must be a list")
+    worker_names = set()
+    for index, worker in enumerate(workers, 1):
+        if not isinstance(worker, dict):
+            raise ValueError(f"Timestamp repair worker {index} must be an object")
+        name = str(worker.get("name", "")).strip()
+        if not name or name == "local" or name in worker_names:
+            raise ValueError(f"Timestamp repair worker {index} needs a unique non-local name")
+        if not validate_worker_url(str(worker.get("url", "")).strip()):
+            raise ValueError(f"{name}: worker URL must use HTTP or HTTPS")
+        if not validate_worker_url(str(worker.get("controller_url", "")).strip()):
+            raise ValueError(f"{name}: controller callback URL must use HTTP or HTTPS")
+        if len(str(worker.get("token", ""))) < 32:
+            raise ValueError(f"{name}: worker token must contain at least 32 characters")
+        worker_names.add(name)
     instance_names = set()
     machine_ids = set()
     for instance in instances:
-        _validate_instance(instance, instance_names, machine_ids)
+        _validate_instance(instance, instance_names, machine_ids, worker_names)
     return parse_config(raw)
 
 
@@ -424,6 +463,7 @@ def _apply_runtime_config(new_config: AppConfig) -> None:
         new_config.log_max_total_size_mb,
         new_config.log_retention_days,
     )
+    _worker_recovery_cache.clear()
     CONFIG_LOAD_ERROR = ""
 
 
@@ -457,7 +497,7 @@ def _csrf_token() -> str:
 def protect_state_changes():
     if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
         return None
-    if request.endpoint == "login":
+    if request.endpoint in {"login", "api_timestamp_repair_worker_scan"}:
         return None
     # Non-browser automations with a verified API token do not rely on cookies
     # and therefore are not susceptible to cookie-based CSRF.
@@ -631,14 +671,127 @@ def _timestamp_runtime(instance_name: str, section_id: str = ""):
     return instance, library, plex
 
 
+def _repair_worker(name: str):
+    return next((worker for worker in config.repair_workers if worker.name == name), None)
+
+
+def _resolved_repair_libraries(instance, plex) -> list[dict]:
+    libraries = []
+    for library in instance.libraries:
+        section_id = library.section_id or (plex.find_section_id(library.name) if plex else None)
+        if section_id:
+            libraries.append({"name": library.name, "section_id": str(section_id)})
+    return libraries
+
+
+def _worker_payload(instance, plex) -> dict:
+    repair = instance.timestamp_repair
+    return {
+        "instance": instance.name,
+        "libraries": _resolved_repair_libraries(instance, plex),
+        "repair": {
+            "database_path": repair.database_path,
+            "allowed_prefixes": repair.allowed_prefixes,
+            "max_files_per_folder": repair.max_files_per_folder,
+            "scan_timeout_seconds": repair.scan_timeout_seconds,
+            "poll_interval_seconds": repair.poll_interval_seconds,
+            "heartbeat_seconds": repair.heartbeat_seconds,
+        },
+    }
+
+
+def _remote_recovery_required() -> bool:
+    workers = {
+        instance.timestamp_repair.worker
+        for instance in config.instances
+        if instance.timestamp_repair.enabled
+        and instance.timestamp_repair.worker != "local"
+    }
+    now = time.monotonic()
+    for name in workers:
+        cached = _worker_recovery_cache.get(name)
+        if cached and now - cached[0] < 5:
+            if cached[1]:
+                return True
+            continue
+        worker = _repair_worker(name)
+        required = True
+        if worker:
+            try:
+                status = RepairWorkerClient(worker, timeout=3).status()
+                required = bool(status.get("active_transaction"))
+            except Exception:
+                # Fail closed: an unreachable worker could have renamed paths.
+                required = True
+        _worker_recovery_cache[name] = (now, required)
+        if required:
+            return True
+    return False
+
+
+def _combined_recovery_required(_instance_name: str) -> bool:
+    return timestamp_repair.has_active_transaction(_instance_name) or _remote_recovery_required()
+
+
+set_recovery_check(_combined_recovery_required)
+
+
+def _repair_readiness(instance) -> tuple[bool, str]:
+    repair = instance.timestamp_repair
+    if not repair.enabled:
+        return False, "Setup required"
+    if repair.worker == "local":
+        if not os.path.isfile(repair.database_path):
+            return False, "Database is not mounted"
+        missing = [path for path in repair.allowed_prefixes if not os.path.isdir(path)]
+        if missing:
+            return False, "Repair media is not mounted"
+        return True, "Ready to audit"
+    worker = _repair_worker(repair.worker)
+    if not worker:
+        return False, "Worker is not configured"
+    try:
+        health = RepairWorkerClient(worker, timeout=3).health()
+        if health.get("recovery_required"):
+            return False, "Worker recovery required"
+        return True, f"Worker {worker.name} connected"
+    except Exception:
+        return False, f"Worker {worker.name} unavailable"
+
+
 @app.route("/api/timestamp-repair/status", methods=["GET"])
 @require_auth
 def api_timestamp_repair_status():
     status = timestamp_repair.status()
+    with _remote_repair_lock:
+        external = dict(_remote_repair)
+    if external.get("running"):
+        worker = _repair_worker(str(external.get("worker", "")))
+        if worker:
+            try:
+                worker_status = RepairWorkerClient(worker, timeout=3).status()
+                active = worker_status.get("active_transaction") or worker_status.get("transaction")
+                if isinstance(active, dict):
+                    external.update({
+                        "state": active.get("state", external.get("state")),
+                        "last_heartbeat": active.get("last_heartbeat", external.get("last_heartbeat")),
+                        "scan_elapsed_seconds": active.get("scan_elapsed_seconds", 0),
+                    })
+            except Exception:
+                pass
+        status.update({
+            "running": True,
+            "state": external.get("state", "running_on_worker"),
+            "last_heartbeat": external.get("last_heartbeat"),
+            "active_transaction": external,
+        })
     status["instances"] = [
         {
             "name": instance.name,
             "enabled": instance.timestamp_repair.enabled,
+            "worker": instance.timestamp_repair.worker,
+            "ready": (readiness := _repair_readiness(instance))[0],
+            "readiness": readiness[1],
             "max_files_per_folder": instance.timestamp_repair.max_files_per_folder,
         }
         for instance in config.instances
@@ -654,9 +807,17 @@ def api_timestamp_repair_audit():
     if not instance:
         return jsonify({"error": "Plex instance not found"}), 404
     try:
-        return jsonify(timestamp_repair.audit(
-            instance, instance.timestamp_repair, plex,
-        ))
+        if instance.timestamp_repair.worker == "local":
+            result = timestamp_repair.audit(
+                instance, instance.timestamp_repair, plex,
+            )
+        else:
+            worker = _repair_worker(instance.timestamp_repair.worker)
+            if not worker:
+                raise ValueError("Configured repair worker was not found")
+            result = RepairWorkerClient(worker).audit(_worker_payload(instance, plex))
+            timestamp_repair.save_audit(result)
+        return jsonify(result)
     except Exception as exc:
         logger.error("Timestamp repair audit failed for %s (%s)",
                      instance.name, type(exc).__name__)
@@ -679,17 +840,81 @@ def api_timestamp_repair_run():
         instance_name, section_id, folder,
     )
     repair_status = timestamp_repair.status()
-    if repair_status.get("running") or repair_status.get("active_transaction"):
+    with _remote_repair_lock:
+        remote_running = bool(_remote_repair.get("running"))
+    if repair_status.get("running") or repair_status.get("active_transaction") or remote_running:
         return jsonify({"error": "A timestamp repair is already active"}), 409
 
+    repair_worker = instance.timestamp_repair.worker
+
+    if repair_worker != "local":
+        worker = _repair_worker(repair_worker)
+        if not worker:
+            return jsonify({"error": "Configured repair worker was not found"}), 400
+        run_id = secrets.token_urlsafe(24)
+        with _remote_repair_lock:
+            _remote_repair.clear()
+            _remote_repair.update({
+                "running": True, "state": "starting_worker",
+                "transaction_id": run_id, "instance": instance.name,
+                "library": library.name, "folder": folder,
+                "worker": worker.name, "last_heartbeat": _utc_now(),
+            })
+            _worker_scan_contexts[run_id] = {
+                "worker": worker.name, "instance": instance.name,
+                "section_id": section_id, "folder": folder, "plex": plex,
+            }
+
     def _run():
-        timestamp_repair.run_folder(
-            instance, library, instance.timestamp_repair, plex, folder, section_id,
-            preflight=lambda: runner._collect_library_checks(
-                instance, library, config, plex, section_id=section_id,
-            )[0],
-            expected_files=expected_files,
-        )
+        if repair_worker == "local":
+            timestamp_repair.run_folder(
+                instance, library, instance.timestamp_repair, plex, folder, section_id,
+                preflight=lambda: runner._collect_library_checks(
+                    instance, library, config, plex, section_id=section_id,
+                )[0],
+                expected_files=expected_files,
+            )
+            return
+        result = {"ok": False, "error": "Worker repair did not start"}
+        try:
+            with lease(instance.name, operation="timestamp_repair") as (acquired, reason):
+                if not acquired:
+                    raise RuntimeError(reason)
+                checks = runner._collect_library_checks(
+                    instance, library, config, plex, section_id=section_id,
+                )[0]
+                failed = [name for name, check in checks.items() if not check.get("pass")]
+                if failed:
+                    raise RuntimeError("Safety checks failed: " + ", ".join(failed))
+                payload = {
+                    **_worker_payload(instance, plex),
+                    "run_id": run_id,
+                    "controller_url": worker.controller_url,
+                    "library_section_id": section_id,
+                    "folder": folder,
+                    "expected_files": sorted(expected_files),
+                }
+                with _remote_repair_lock:
+                    _remote_repair.update({
+                        "state": "running_on_worker", "last_heartbeat": _utc_now(),
+                    })
+                result = RepairWorkerClient(worker).run(payload)
+                worker_status = RepairWorkerClient(worker, timeout=3).status()
+                timestamp_repair.merge_history(worker_status.get("history", []))
+        except Exception as exc:
+            result = {"ok": False, "error": str(exc)}
+            logger.error("Remote timestamp repair failed for %s (%s)",
+                         instance.name, type(exc).__name__)
+        finally:
+            with _remote_repair_lock:
+                _worker_scan_contexts.pop(run_id, None)
+                _remote_repair.update({
+                    "running": False,
+                    "state": "completed" if result.get("ok") else "failed",
+                    "error": result.get("error", ""),
+                    "last_heartbeat": _utc_now(),
+                })
+            _worker_recovery_cache.pop(worker.name, None)
 
     threading.Thread(target=_run, daemon=True, name="timestamp-repair").start()
     return jsonify({"status": "triggered"}), 202
@@ -699,6 +924,15 @@ def api_timestamp_repair_run():
 @require_auth
 def api_timestamp_repair_cancel():
     timestamp_repair.cancel()
+    with _remote_repair_lock:
+        worker_name = _remote_repair.get("worker") if _remote_repair.get("running") else None
+    if worker_name:
+        worker = _repair_worker(worker_name)
+        if worker:
+            try:
+                RepairWorkerClient(worker).cancel()
+            except Exception:
+                pass
     return jsonify({"ok": True, "message": "Cancellation requested; names will be restored at the next safe step"})
 
 
@@ -706,7 +940,100 @@ def api_timestamp_repair_cancel():
 @require_auth
 def api_timestamp_repair_recover():
     result = timestamp_repair.recover()
+    if result.get("ok") and result.get("message") == "No recovery is required":
+        for instance in config.instances:
+            repair = instance.timestamp_repair
+            if not repair.enabled or repair.worker == "local":
+                continue
+            worker = _repair_worker(repair.worker)
+            if not worker:
+                continue
+            try:
+                status = RepairWorkerClient(worker, timeout=3).status()
+                if status.get("active_transaction"):
+                    result = RepairWorkerClient(worker).recover(instance.name)
+                    timestamp_repair.merge_history(
+                        RepairWorkerClient(worker, timeout=3).status().get("history", [])
+                    )
+                    _worker_recovery_cache.pop(worker.name, None)
+                    break
+            except Exception as exc:
+                result = {"ok": False, "error": f"Worker {worker.name} is unavailable"}
+                logger.warning("Worker recovery check failed (%s)", type(exc).__name__)
+                break
     return jsonify(result), (200 if result.get("ok") else 409)
+
+
+@app.route("/api/timestamp-repair/worker-scan/<run_id>", methods=["POST"])
+def api_timestamp_repair_worker_scan(run_id: str):
+    with _remote_repair_lock:
+        context = _worker_scan_contexts.get(run_id)
+    if not context:
+        return jsonify({"ok": False, "error": "Unknown repair transaction"}), 404
+    worker = _repair_worker(context["worker"])
+    if not worker:
+        return jsonify({"ok": False, "error": "Unknown repair worker"}), 401
+    ok, error = _worker_signature_verifier.verify(
+        worker.token, worker.name, request.method, request.path,
+        request.get_data(cache=True), request.headers,
+    )
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 401
+    payload = request.get_json(silent=True) or {}
+    if (str(payload.get("section_id", "")) != context["section_id"]
+            or str(payload.get("folder", "")) != context["folder"]):
+        return jsonify({"ok": False, "error": "Scan request is outside the approved folder"}), 403
+    return jsonify(context["plex"].scan_path(context["section_id"], context["folder"]))
+
+
+@app.route("/api/timestamp-repair/worker-test", methods=["POST"])
+@require_auth
+def api_timestamp_repair_worker_test():
+    data = request.get_json(silent=True) or {}
+    worker = SimpleNamespace(
+        name=str(data.get("name", "")).strip(),
+        url=str(data.get("url", "")).strip(),
+        token=str(data.get("token", "")),
+        controller_url=str(data.get("controller_url", "")).strip(),
+    )
+    try:
+        return jsonify(RepairWorkerClient(worker, timeout=5).health())
+    except Exception as exc:
+        logger.warning("Repair worker test failed (%s)", type(exc).__name__)
+        return jsonify({"ok": False, "error": "Worker could not be reached or authenticated"}), 400
+
+
+@app.route("/api/timestamp-repair/databases", methods=["POST"])
+@require_auth
+def api_timestamp_repair_databases():
+    data = request.get_json(silent=True) or {}
+    worker_name = str(data.get("worker", "local")) or "local"
+    if worker_name != "local":
+        worker = _repair_worker(worker_name)
+        if not worker:
+            return jsonify({"ok": False, "error": "Repair worker is not configured"}), 404
+        try:
+            return jsonify(RepairWorkerClient(worker, timeout=10).discover())
+        except Exception as exc:
+            logger.warning("Worker database discovery failed (%s)", type(exc).__name__)
+            return jsonify({"ok": False, "error": "Worker database discovery failed"}), 400
+    roots = [
+        value.strip() for value in os.environ.get(
+            "TIMESTAMP_REPAIR_DATABASE_ROOTS", "/plex-db",
+        ).split(",") if value.strip()
+    ]
+    found = []
+    for root in roots:
+        base = Path(root)
+        if not base.is_dir():
+            continue
+        try:
+            found.extend(str(path) for path in base.rglob(
+                "com.plexapp.plugins.library.db"
+            ) if path.is_file())
+        except OSError:
+            continue
+    return jsonify({"ok": True, "databases": sorted(set(found)), "roots": roots})
 
 
 @app.route("/api/logs", methods=["GET"])
@@ -1083,7 +1410,7 @@ def _build_instance_cfg(inst: dict, store_tokens: bool, env_vars_needed: list) -
             "value":       token,
         })
 
-    return {
+    instance_cfg = {
         "name":      inst_name,
         "url":       inst.get("url", ""),
         "token":     token if store_tokens else "",
@@ -1091,6 +1418,22 @@ def _build_instance_cfg(inst: dict, store_tokens: bool, env_vars_needed: list) -
            if inst.get("machine_id") else {}),
         "libraries": [_build_library_cfg(lib, env_vars_needed) for lib in inst.get("libraries", [])],
     }
+    repair = inst.get("timestamp_repair", {})
+    if isinstance(repair, dict):
+        instance_cfg["timestamp_repair"] = {
+            "enabled": bool(repair.get("enabled", False)),
+            "worker": str(repair.get("worker", "local")) or "local",
+            "database_path": str(repair.get("database_path", "")),
+            "allowed_prefixes": [
+                str(path).strip() for path in repair.get("allowed_prefixes", [])
+                if str(path).strip()
+            ],
+            "max_files_per_folder": int(repair.get("max_files_per_folder", 5)),
+            "scan_timeout_seconds": int(repair.get("scan_timeout_seconds", 1800)),
+            "poll_interval_seconds": int(repair.get("poll_interval_seconds", 5)),
+            "heartbeat_seconds": int(repair.get("heartbeat_seconds", 30)),
+        }
+    return instance_cfg
 
 
 @app.route("/api/wizard/save", methods=["POST"])
@@ -1103,6 +1446,14 @@ def api_wizard_save():
     If store_tokens=True, writes tokens directly to config (less secure but simpler).
     If store_tokens=False, leaves tokens blank and returns the env var names needed.
     """
+    repair_status = timestamp_repair.status()
+    with _remote_repair_lock:
+        remote_running = bool(_remote_repair.get("running"))
+    if repair_status.get("running") or repair_status.get("active_transaction") or remote_running:
+        return jsonify({
+            "ok": False,
+            "error": "Configuration cannot change during timestamp repair or recovery",
+        }), 409
     data         = request.get_json(silent=True) or {}
     store_tokens = bool(data.get("store_tokens", False))
 
@@ -1138,6 +1489,9 @@ def api_wizard_save():
             ),
         },
         "plex_instances": [],
+        "timestamp_repair_workers": data.get(
+            "repair_workers", existing.get("timestamp_repair_workers", []),
+        ),
         "clean_bundles_before_empty": bool(
             data.get(
                 "clean_bundles_before_empty",
@@ -1198,16 +1552,6 @@ def api_wizard_save():
         _build_instance_cfg(inst, store_tokens, env_vars_needed)
         for inst in data.get("instances", [])
     ]
-    existing_instances = {
-        str(instance.get("name", "")): instance
-        for instance in existing.get("plex_instances", [])
-        if isinstance(instance, dict)
-    }
-    for instance_cfg in cfg["plex_instances"]:
-        previous = existing_instances.get(instance_cfg["name"], {})
-        if "timestamp_repair" in previous:
-            instance_cfg["timestamp_repair"] = previous["timestamp_repair"]
-
     try:
         runtime_tokens = {
             str(instance.get("name", "")): str(instance.get("token", ""))

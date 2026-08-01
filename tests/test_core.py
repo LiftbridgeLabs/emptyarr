@@ -549,6 +549,48 @@ class SafetyTests(unittest.TestCase):
         record.assert_called_once()
         self.assertIn("already in progress", record.call_args.args[4])
 
+    def test_distinct_library_runs_queue_instead_of_skipping(self):
+        instance = PlexInstanceConfig("Plex", "http://plex", "token", [])
+        movies = LibraryConfig("Movies", "physical", [])
+        shows = LibraryConfig("TV Shows", "physical", [])
+        config = AppConfig(instances=[instance])
+        plex = Mock()
+        first_started = threading.Event()
+        release_first = threading.Event()
+        second_attempting = threading.Event()
+        completed = []
+
+        def controlled_run(_instance, library, *_args, **_kwargs):
+            if library.name == "Movies":
+                first_started.set()
+                release_first.wait(2)
+            completed.append(library.name)
+
+        def run_shows():
+            second_attempting.set()
+            runner.run_library(instance, shows, config, plex)
+
+        with patch("src.runner._run_library", side_effect=controlled_run), \
+             patch("src.runner._record") as record:
+            first = threading.Thread(
+                target=runner.run_library,
+                args=(instance, movies, config, plex),
+            )
+            second = threading.Thread(target=run_shows)
+            first.start()
+            self.assertTrue(first_started.wait(1))
+            second.start()
+            self.assertTrue(second_attempting.wait(1))
+            self.assertTrue(second.is_alive())
+            release_first.set()
+            first.join(2)
+            second.join(2)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(completed, ["Movies", "TV Shows"])
+        record.assert_not_called()
+
     def test_failed_health_check_never_empties_trash(self):
         instance, library, config, plex = self._run_objects()
         self._run_with_checks(

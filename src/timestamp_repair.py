@@ -56,7 +56,8 @@ def _rename_symlink(source: str, destination: str) -> None:
 
 
 class TimestampRepairManager:
-    def __init__(self, data_dir: str, sleep: Callable[[float], None] = time.sleep):
+    def __init__(self, data_dir: str, sleep: Callable[[float], None] = time.sleep,
+                 register_recovery_check: bool = True):
         self.root = Path(data_dir) / "timestamp-repair"
         self.active_path = self.root / "active.json"
         self.audit_path = self.root / "audit.json"
@@ -65,7 +66,8 @@ class TimestampRepairManager:
         self._guard = threading.RLock()
         self._cancel = threading.Event()
         self._status = {"running": False, "state": "idle", "last_heartbeat": None}
-        set_recovery_check(self.has_active_transaction)
+        if register_recovery_check:
+            set_recovery_check(self.has_active_transaction)
 
     def _read_json(self, path: Path, fallback):
         try:
@@ -220,12 +222,32 @@ class TimestampRepairManager:
                 for section_id, name in libraries.items()
             ],
         }
+        self.save_audit(result)
+        return result
+
+    def save_audit(self, result: dict) -> None:
+        """Persist a controller-local copy of a local or worker audit."""
         audits = self._read_json(self.audit_path, {})
         if not isinstance(audits, dict):
             audits = {}
-        audits[instance.name] = result
+        audits[str(result.get("instance", ""))] = result
         atomic_write_json(str(self.audit_path), audits)
-        return result
+
+    def merge_history(self, entries: list[dict]) -> None:
+        """Import worker transaction summaries without duplicating IDs."""
+        history = self._read_json(self.history_path, [])
+        combined = [*entries, *history]
+        seen = set()
+        unique = []
+        for item in combined:
+            key = item.get("transaction_id") or (
+                item.get("instance"), item.get("folder"), item.get("completed_at")
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+        atomic_write_json(str(self.history_path), unique[:100])
 
     def status(self) -> dict:
         with self._guard:
@@ -317,7 +339,11 @@ class TimestampRepairManager:
             return {"ok": False, "error": "The active transaction belongs to another Plex instance"}
         if transaction.get("manifest_corrupt"):
             return {"ok": False, "error": transaction["error"]}
-        with lease(transaction["instance"], allow_recovery=True) as (acquired, reason):
+        with lease(
+            transaction["instance"],
+            allow_recovery=True,
+            operation="timestamp_recovery",
+        ) as (acquired, reason):
             if not acquired:
                 return {"ok": False, "error": reason}
             if not self._restore(transaction):
@@ -370,7 +396,7 @@ class TimestampRepairManager:
         resolved_section = str(section_id or library.section_id or "")
         if not resolved_section:
             return self._failure("Plex library section is unavailable")
-        with lease(instance.name) as (acquired, reason):
+        with lease(instance.name, operation="timestamp_repair") as (acquired, reason):
             if not acquired:
                 return self._failure(reason)
             transaction = None
