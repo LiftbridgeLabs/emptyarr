@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <Container version="2">
   <n>emptyarr</n>
-  <Repository>jjbobz/emptyarr:latest</Repository>
-  <Registry>https://hub.docker.com/r/jjbobz/emptyarr</Registry>
+  <Repository>liftbridgelabs/emptyarr:latest</Repository>
+  <Registry>https://hub.docker.com/r/liftbridgelabs/emptyarr</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
@@ -72,6 +72,26 @@
        Plex's stored symlink prefix, plus a read-only mapping of only Plex's
        Plug-in Support/Databases directory to /plex-db. Broad media roots and
        Plex appdata must remain read-only. -->
+
+  <Config Name="Plex Databases (local server 1)"
+          Target="/plex-db/server-1"
+          Default=""
+          Mode="ro"
+          Description="Optional for local timestamp repair only. Select this Plex server's Plug-in Support/Databases directory. Not needed for Empty Trash, startup safety status, or Match Audit."
+          Type="Path"
+          Display="advanced"
+          Required="false"
+          Mask="false"></Config>
+
+  <Config Name="Plex Databases (local server 2)"
+          Target="/plex-db/server-2"
+          Default=""
+          Mode="ro"
+          Description="Optional second local Plex Plug-in Support/Databases directory. Use a repair worker instead when Plex runs on another machine."
+          Type="Path"
+          Display="advanced"
+          Required="false"
+          Mask="false"></Config>
 
   <!-- ── Web UI auth ────────────────────────────────────────────────────── -->
   <Config Name="Web UI Username (optional)"
@@ -175,7 +195,7 @@
           Type="Variable"
           Display="advanced"
           Required="false"
-          Mask="false"></Config>
+          Mask="true"></Config>
 
   <!-- ── General settings ───────────────────────────────────────────────── -->
   <Config Name="PUID"

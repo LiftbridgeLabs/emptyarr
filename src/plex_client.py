@@ -95,6 +95,66 @@ class PlexClient:
             for s in r.json().get("MediaContainer", {}).get("Directory", [])
         ]
 
+    def get_machine_identifier(self) -> Optional[str]:
+        try:
+            response = self._get("/identity")
+            response.raise_for_status()
+            return str(
+                response.json().get("MediaContainer", {}).get(
+                    "machineIdentifier", "",
+                )
+            ) or None
+        except Exception:
+            return None
+
+    def get_unmatched_items(self, section_id: str) -> Dict:
+        """Return top-level library items whose primary GUID is local-only."""
+        response = self._get(
+            f"/library/sections/{section_id}/all",
+            params={
+                "X-Plex-Container-Start": 0,
+                "X-Plex-Container-Size": 100000,
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        container = response.json().get("MediaContainer", {})
+        entries = list(container.get("Metadata", []))
+        if not entries:
+            entries = [
+                *container.get("Video", []),
+                *container.get("Directory", []),
+            ]
+        unmatched = []
+        seen = set()
+        for item in entries:
+            guid = str(item.get("guid", ""))
+            rating_key = str(item.get("ratingKey", ""))
+            if not guid.startswith("local://") or not rating_key:
+                continue
+            if rating_key in seen:
+                continue
+            seen.add(rating_key)
+            unmatched.append({
+                "title": str(item.get("title", "Unknown")),
+                "year": item.get("year", ""),
+                "type": str(item.get("type", "item")),
+                "rating_key": rating_key,
+                "metadata_key": str(
+                    item.get("key") or f"/library/metadata/{rating_key}"
+                ),
+                "guid": guid,
+            })
+        return {
+            "total_items": int(
+                container.get("totalSize", container.get("size", len(entries)))
+            ),
+            "items": sorted(
+                unmatched,
+                key=lambda item: (item["title"].casefold(), item["rating_key"]),
+            ),
+        }
+
     def find_section_id(self, library_name: str) -> Optional[str]:
         try:
             for s in self.get_sections():

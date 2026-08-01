@@ -346,6 +346,8 @@ nav{
 }
 .lib-card:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(0,0,0,.16);}
 .lib-card.success{border-top-color:var(--pass);}
+.lib-card.preflight_pass{border-top-color:var(--pass);}
+.lib-card.preflight_fail{border-top-color:var(--warn);}
 .lib-card.skipped{border-top-color:var(--warn);}
 .lib-card.error   {border-top-color:var(--fail);}
 .lib-card.dry_run {border-top-color:var(--info);}
@@ -769,6 +771,18 @@ dialog.overlay::backdrop{background:transparent;}
 .repair-file:last-child{border-bottom:0;}
 .repair-file-path{color:var(--muted);font:500 12px/1.5 var(--mono);margin-top:4px;}
 .repair-folder-footer{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:4px;}
+.metadata-audit-card{min-height:460px;}
+.metadata-library-block{border-bottom:1px solid var(--border);}
+.metadata-library-block:last-child{border-bottom:0;}
+.metadata-library-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 17px;background:rgba(0,0,0,.08);}
+.metadata-library-summary strong{font-size:16px;color:var(--bright);}
+.metadata-library-summary span{font:600 12px/1.3 var(--mono);color:var(--text2);}
+.metadata-items{max-height:330px;overflow:auto;}
+.metadata-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;padding:14px 17px;border-top:1px solid var(--border);}
+.metadata-item-title{font-size:15px;font-weight:680;color:var(--bright);}
+.metadata-item-key{font:500 11px/1.5 var(--mono);color:var(--muted);margin-top:3px;}
+.metadata-clean{padding:16px 17px;border-top:1px solid var(--border);color:var(--pass2);font-size:14px;}
+.metadata-error{padding:16px 17px;color:var(--fail2);font-size:14px;}
 @media(max-width:1180px){.repair-instance-grid,.repair-folder-grid{grid-template-columns:1fr;}}
 @media(max-width:700px){
   .repair-page-head{align-items:flex-start;flex-direction:column;}
@@ -798,6 +812,9 @@ dialog.overlay::backdrop{background:transparent;}
     </button>
     <button class="nav-link" onclick="showPage('timestamp-repair',this)" id="nav-timestamp-repair">
       Timestamp Repair
+    </button>
+    <button class="nav-link" onclick="showPage('metadata-audit',this)" id="nav-metadata-audit">
+      Match Audit
     </button>
     <button class="nav-link" onclick="showPage('settings',this)" id="nav-settings">
       Settings
@@ -975,7 +992,21 @@ dialog.overlay::backdrop{background:transparent;}
   {% endif %}
 </div>
 
-<!-- ── HISTORY PAGE ── -->
+<!-- ── MATCH AUDIT PAGE ── -->
+<div class="page" id="page-metadata-audit">
+  <div class="repair-page-head">
+    <div>
+      <div class="eyebrow">Plex metadata health</div>
+      <h1 class="dashboard-title">Unmatched items</h1>
+      <div class="dashboard-subtitle">Find movies and shows Plex has not matched to a real metadata source, then open each item directly in Plex.</div>
+    </div>
+    <button class="btn btn-secondary" onclick="loadMetadataAuditStatus()">&#8635;&nbsp; Refresh saved results</button>
+  </div>
+  <div class="repair-warning" style="border-color:var(--accent-line);background:var(--accent-faint);color:var(--text2);">This audit is read-only. It does not scan files, change Plex metadata, or affect Empty Trash safety decisions.</div>
+  <div class="repair-section-heading"><h2 class="repair-section-title">Plex instances</h2><div class="repair-section-line"></div></div>
+  <div class="repair-instance-grid" id="metadata-audit-grid"><div class="empty-msg">Loading saved metadata audits&hellip;</div></div>
+</div>
+
 <div class="page" id="page-timestamp-repair">
   <div id="repair-overview">
     <div class="repair-page-head">
@@ -1603,8 +1634,69 @@ function showPage(name, btn) {
   if (btn) btn.classList.add('active');
   if (name === 'history') { fetchHistory(); }
   if (name === 'timestamp-repair') { loadRepairStatus(); }
+  if (name === 'metadata-audit') { loadMetadataAuditStatus(); }
   if (name === 'settings') { loadSettings(); }
   if (name !== 'settings') { stopLogViewer(); }
+}
+
+// Plex unmatched metadata audit
+let _metadataAuditStatus = null;
+
+async function loadMetadataAuditStatus() {
+  const grid = document.getElementById('metadata-audit-grid');
+  try {
+    const response = await fetch('/api/metadata-audit/status');
+    _metadataAuditStatus = await response.json();
+    renderMetadataAudits(_metadataAuditStatus);
+  } catch (error) {
+    if (grid) grid.innerHTML = '<div class="empty-msg">Could not load saved metadata audits.</div>';
+  }
+}
+
+function renderMetadataAudits(status) {
+  const grid = document.getElementById('metadata-audit-grid');
+  if (!grid) return;
+  grid.innerHTML = (status.instances || []).map(instanceName => {
+    const audit = status.audits?.[instanceName];
+    const libraries = audit?.libraries || [];
+    const unmatched = Number(audit?.unmatched_count || 0);
+    const errors = Number(audit?.error_count || libraries.filter(library => library.error).length);
+    const total = audit?.total_items;
+    const libraryBlocks = libraries.map(library => {
+      if (library.error) return `<div class="metadata-library-block"><div class="metadata-library-summary"><strong>${h(library.name)}</strong><span>audit failed</span></div><div class="metadata-error">${h(library.error)}</div></div>`;
+      const items = (library.items || []).map(item => `<div class="metadata-item"><div><div class="metadata-item-title">${h(item.title)}${item.year?` (${h(item.year)})`:''}</div><div class="metadata-item-key">ratingKey ${h(item.rating_key)} &middot; ${h(item.metadata_key)}</div></div>${item.plex_url?`<a class="btn btn-ghost" href="${h(item.plex_url)}" target="_blank" rel="noopener noreferrer">Open in Plex &nearr;</a>`:''}</div>`).join('');
+      return `<div class="metadata-library-block"><div class="metadata-library-summary"><strong>${h(library.name)}</strong><span>${Number(library.unmatched_count||0).toLocaleString()} unmatched / ${Number(library.total_items||0).toLocaleString()} items</span></div><div class="metadata-items">${items || '<div class="metadata-clean">No unmatched items found.</div>'}</div></div>`;
+    }).join('');
+    const needsAttention = !audit || unmatched > 0 || errors > 0;
+    const statusLabel = !audit ? 'Not audited' : errors ? `${errors} audit error${errors===1?'':'s'}` : unmatched ? `${unmatched} need attention` : 'All matched';
+    return `<section class="repair-instance-card metadata-audit-card ${needsAttention?'not-ready':''}">
+      <div class="repair-instance-head"><div><div class="repair-instance-kind">Plex server</div><div class="repair-instance-name">${h(instanceName)}</div></div><div class="repair-status-pill ${needsAttention?'warn':''}"><span class="repair-status-dot"></span>${statusLabel}</div></div>
+      <div class="repair-metrics">
+        <div class="repair-metric"><div class="repair-metric-label">Unmatched</div><div class="repair-metric-value affected">${unmatched.toLocaleString()}</div></div>
+        <div class="repair-metric"><div class="repair-metric-label">Items scanned</div><div class="repair-metric-value">${total!=null?Number(total).toLocaleString():'\u2014'}</div></div>
+        <div class="repair-metric"><div class="repair-metric-label">Libraries</div><div class="repair-metric-value fixed">${audit?libraries.length:'\u2014'}</div></div>
+      </div>
+      <div class="repair-library-panel">${libraryBlocks || `<div class="repair-empty-audit"><div><strong style="display:block;color:var(--bright);font-size:17px;margin-bottom:6px;">${audit?'No movie or TV libraries configured':'Run the first match audit'}</strong>${audit?'Only configured movie and TV show libraries are checked.':'One bulk, read-only Plex request is used per library.'}</div></div>`}</div>
+      <div class="repair-instance-footer"><div class="repair-instance-footnote">${audit?`Last audited ${h(fmtAgo(audit.audited_at))}`:'No saved results yet'}<br>${audit?.machine_id?'Direct Plex links available':'Rating keys will be shown if no machine identifier is available'}</div><div class="repair-instance-actions"><button class="btn btn-primary" data-metadata-audit-instance="${h(instanceName)}">Audit now</button></div></div>
+    </section>`;
+  }).join('') || '<div class="empty-msg">No Plex instances are configured.</div>';
+  grid.querySelectorAll('[data-metadata-audit-instance]').forEach(button => button.addEventListener('click', () => runMetadataAudit(button.dataset.metadataAuditInstance, button)));
+}
+
+async function runMetadataAudit(instance, button) {
+  button.disabled = true;
+  button.innerHTML = '<span class="spin"></span> auditing&hellip;';
+  try {
+    const response = await fetch('/api/metadata-audit/run', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instance})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Metadata audit failed');
+    toast(`Found ${result.unmatched_count} unmatched item(s) on ${instance}`, result.unmatched_count ? 'warn' : 'pass');
+    await loadMetadataAuditStatus();
+  } catch (error) {
+    toast(error.message || 'Metadata audit failed', 'fail');
+    button.disabled = false;
+    button.textContent = 'Audit now';
+  }
 }
 
 // Timestamp repair
@@ -1771,7 +1863,7 @@ function fmtAgo(iso) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 function cid(i, l) { return i.replace(/ /g,'_') + '_' + l.replace(/ /g,'_'); }
-function statusCls(s) { return {success:'pass',skipped:'warn',error:'fail',dry_run:'info'}[s] || ''; }
+function statusCls(s) { return {success:'pass',skipped:'warn',error:'fail',dry_run:'info',preflight_pass:'pass',preflight_fail:'warn'}[s] || ''; }
 
 // ── Dashboard views ───────────────────────────────────────────────────────────
 function selectDashboardView(requestedView, updateLocation = true) {
@@ -1824,7 +1916,7 @@ function applyChecks(globalChecks) {
 }
 
 function applyStatus(data, nextRuns) {
-  const summary = {ready: 0, attention: 0, pending: 0};
+  const summary = {ready: 0, attention: 0, pending: 0, preflight: 0};
   _instances.forEach(inst => {
     const instData = (data.instances || []).find(i => i.name === inst.name) || {};
     (instData.libraries || []).forEach(lib => {
@@ -1832,21 +1924,22 @@ function applyStatus(data, nextRuns) {
       const st = lib.status || {};
       const card = document.getElementById(`lc-${id}`);
       if (card) card.className = `lib-card ${st.last_status || 'idle'}`;
-      const labels = {success:'Healthy',skipped:'Skipped',error:'Needs attention',dry_run:'Dry run passed'};
+      const labels = {success:'Healthy',skipped:'Skipped',error:'Needs attention',dry_run:'Dry run passed',preflight_pass:'Safety checks passed',preflight_fail:'Safety checks failed'};
       const sv = document.getElementById(`ls-s-${id}`);
       if (sv) sv.textContent = labels[st.last_status] || 'Awaiting first run';
       const dot = document.getElementById(`ls-dot-${id}`);
       if (dot) dot.className = `lib-state-dot ${statusCls(st.last_status)}`;
-      if (st.last_status === 'success' || st.last_status === 'dry_run') summary.ready++;
-      else if (st.last_status === 'error' || st.last_status === 'skipped') summary.attention++;
+      if (st.last_status === 'success' || st.last_status === 'dry_run' || st.last_status === 'preflight_pass') summary.ready++;
+      else if (st.last_status === 'error' || st.last_status === 'skipped' || st.last_status === 'preflight_fail') summary.attention++;
       else summary.pending++;
+      if (st.status_source === 'preflight') summary.preflight++;
       const rv = document.getElementById(`ls-r-${id}`);
       if (rv) { rv.textContent = st.removed_count != null ? st.removed_count : '—'; rv.className = `lib-stat-val ${st.removed_count > 0 ? 'pass' : ''}`; }
       const key = `${inst.name}::${lib.name}`;
       const nv = document.getElementById(`ls-n-${id}`);
       if (nv && nextRuns[key]) nv.textContent = fmtRel(nextRuns[key]);
       const tv = document.getElementById(`ls-t-${id}`);
-      if (tv && st.last_run) tv.innerHTML = `<b>${fmtTime(st.last_run)}</b>`;
+      if (tv && (st.last_run || st.last_checked)) tv.innerHTML = `${st.status_source === 'preflight' ? 'Checked ' : ''}<b>${fmtTime(st.last_run || st.last_checked)}</b>`;
     });
   });
   updateProtectionOverview(summary);
@@ -1874,10 +1967,15 @@ function updateProtectionOverview(summary) {
   if (!title || !copy) return;
   if (summary.attention) {
     title.textContent = `${summary.attention} ${summary.attention === 1 ? 'library needs' : 'libraries need'} attention`;
-    copy.textContent = 'A health check was skipped or failed. Review activity before emptying trash.';
+    copy.textContent = summary.preflight
+      ? 'A current read-only safety check failed. Review the affected library card before running Empty Trash.'
+      : 'A health check was skipped or failed. Review activity before emptying trash.';
   } else if (summary.pending) {
     title.textContent = summary.ready ? 'Protection is coming online' : 'Ready for the first protection run';
     copy.textContent = `${summary.pending} ${summary.pending === 1 ? 'library has' : 'libraries have'} not completed a run yet.`;
+  } else if (summary.preflight) {
+    title.textContent = 'All libraries are ready';
+    copy.textContent = 'Current read-only safety checks passed. No trash was emptied.';
   } else {
     title.textContent = 'All libraries are protected';
     copy.textContent = 'Every monitored library completed its latest safety run successfully.';

@@ -205,6 +205,44 @@ def run_instance_checks(instance: PlexInstanceConfig,
     return checks
 
 
+def refresh_protection_status(instance: PlexInstanceConfig,
+                              library: LibraryConfig,
+                              config: AppConfig,
+                              plex: PlexClient,
+                              plex_checks: Optional[Dict] = None) -> Dict:
+    """Populate dashboard health using checks that cannot empty Plex trash."""
+    section_id = library.section_id or plex.find_section_id(library.name)
+    if not section_id:
+        checks = dict(plex_checks or run_instance_checks(instance, plex))
+        checks["Plex library"] = {
+            "pass": False,
+            "detail": f"Could not find Plex section for '{library.name}'",
+        }
+    else:
+        checks, _ = _collect_library_checks(
+            instance, library, config, plex,
+            plex_checks=plex_checks, section_id=section_id,
+        )
+    failed = _failed_checks(checks)
+    status = "preflight_fail" if failed else "preflight_pass"
+    message = (
+        "Read-only safety checks failed: " + ", ".join(failed)
+        if failed else "Read-only safety checks passed; no trash was emptied"
+    )
+    checked_at = datetime.now().isoformat()
+    with _lock:
+        _instance_status.setdefault(instance.name, {})[library.name] = {
+            "last_checked": checked_at,
+            "last_status": status,
+            "last_message": message,
+            "removed_count": None,
+            "status_source": "preflight",
+            "checks": checks,
+        }
+    logger.info("[%s / %s] %s", instance.name, library.name, message)
+    return checks
+
+
 # ── Library runner ────────────────────────────────────────────────────────────
 
 def _breakdown(items: list) -> str:

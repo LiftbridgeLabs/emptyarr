@@ -73,6 +73,21 @@ python -m unittest discover -s tests -v
   fails closed.
 - `test_trash_inventory_keeps_same_title_with_distinct_plex_ids` — separate Plex
   items with the same title remain distinct in safety snapshots.
+- `test_unmatched_items_use_one_bulk_request_and_local_guid` — match audits use
+  one bulk request and report only top-level items with a `local://` GUID.
+
+### Read-only status and match audit
+
+- `test_readonly_status_preload_never_reads_or_empties_trash` — startup status
+  checks populate dashboard state without reading trash, creating history, or
+  calling Empty Trash.
+- `test_startup_status_refresh_runs_in_background` — the preload is launched in
+  a daemon worker and covers each configured library.
+- `test_audit_returns_direct_links_without_touching_trash` — Match Audit returns
+  rating keys and encoded Plex detail links without entering the destructive
+  workflow.
+- `test_match_audit_ui_is_explicitly_manual_and_read_only` — the UI identifies
+  the audit as manual, read-only, and separate from the Empty Trash safety gate.
 
 ### Trash protection and destructive workflow
 

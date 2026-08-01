@@ -443,6 +443,121 @@ class PlexClientTests(unittest.TestCase):
             items = client.get_trash_items("1")
         self.assertEqual(len(items), 2)
 
+    def test_unmatched_items_use_one_bulk_request_and_local_guid(self):
+        client = PlexClient("http://plex:32400", "token")
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"MediaContainer": {
+            "totalSize": 3,
+            "Metadata": [
+                {"title": "Matched", "ratingKey": "1",
+                 "key": "/library/metadata/1", "guid": "plex://movie/abc"},
+                {"title": "Needs Match", "year": 2026, "ratingKey": "2",
+                 "key": "/library/metadata/2", "guid": "local://2"},
+                {"title": "Also Matched", "ratingKey": "3",
+                 "guid": "tmdb://3"},
+            ],
+        }}
+
+        with patch.object(client, "_get", return_value=response) as get:
+            result = client.get_unmatched_items("7")
+
+        self.assertEqual(result["total_items"], 3)
+        self.assertEqual([item["rating_key"] for item in result["items"]], ["2"])
+        get.assert_called_once_with(
+            "/library/sections/7/all",
+            params={
+                "X-Plex-Container-Start": 0,
+                "X-Plex-Container-Size": 100000,
+            },
+            timeout=60,
+        )
+
+
+class MetadataAuditTests(unittest.TestCase):
+    def test_audit_returns_direct_links_without_touching_trash(self):
+        library = LibraryConfig("Movies", "physical", [], section_id="1")
+        instance = PlexInstanceConfig(
+            "Unlimited", "http://plex:32400", "token", [library],
+            machine_id="server id",
+        )
+        target_config = AppConfig(instances=[instance])
+        plex = Mock()
+        plex.get_sections.return_value = [
+            {"id": "1", "title": "Movies", "type": "movie"},
+        ]
+        plex.get_unmatched_items.return_value = {
+            "total_items": 500,
+            "items": [{
+                "title": "Needs Match",
+                "year": 2026,
+                "type": "movie",
+                "rating_key": "42",
+                "metadata_key": "/library/metadata/42",
+                "guid": "local://42",
+            }],
+        }
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_csrf_token"] = "known-token"
+
+        with patch.object(app, "config", target_config), \
+             patch.object(app, "plex_clients", {instance.name: plex}), \
+             patch.object(app, "_read_metadata_audits", return_value={}), \
+             patch.object(app, "atomic_write_json") as write:
+            response = client.post(
+                "/api/metadata-audit/run",
+                json={"instance": instance.name},
+                headers={"X-CSRF-Token": "known-token"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()
+        self.assertEqual(result["unmatched_count"], 1)
+        self.assertEqual(result["total_items"], 500)
+        self.assertEqual(
+            result["libraries"][0]["items"][0]["plex_url"],
+            "https://app.plex.tv/desktop/#!/server/server%20id/details?key="
+            "%2Flibrary%2Fmetadata%2F42",
+        )
+        saved = write.call_args.args[1]
+        self.assertIn(instance.name, saved)
+        plex.get_unmatched_items.assert_called_once_with("1")
+        plex.get_trash_items.assert_not_called()
+        plex.empty_trash.assert_not_called()
+
+    def test_match_audit_ui_is_explicitly_manual_and_read_only(self):
+        html = app.app.test_client().get("/").get_data(as_text=True)
+        self.assertIn("Match Audit", html)
+        self.assertIn("Audit now", html)
+        self.assertIn("read-only", html)
+        self.assertIn("affect Empty Trash safety decisions", html)
+
+    def test_startup_status_refresh_runs_in_background(self):
+        library = LibraryConfig("Movies", "physical", [], section_id="1")
+        instance = PlexInstanceConfig(
+            "Plex", "http://plex:32400", "token", [library],
+        )
+        target_config = AppConfig(instances=[instance])
+        plex = Mock()
+        checks = {"Plex": {"pass": True, "detail": "ok"}}
+
+        with patch.object(app.threading, "Thread") as thread, \
+             patch.object(app.runner, "run_instance_checks",
+                          return_value=checks) as instance_checks, \
+             patch.object(app.runner, "refresh_protection_status") as refresh:
+            app._start_readonly_status_refresh(
+                target_config, {instance.name: plex},
+            )
+            thread.call_args.kwargs["target"]()
+
+        self.assertTrue(thread.call_args.kwargs["daemon"])
+        thread.return_value.start.assert_called_once_with()
+        instance_checks.assert_called_once_with(instance, plex)
+        refresh.assert_called_once_with(
+            instance, library, target_config, plex, checks,
+        )
+
 
 class SafetyTests(unittest.TestCase):
     @staticmethod
@@ -597,6 +712,26 @@ class SafetyTests(unittest.TestCase):
             instance, library, config, plex,
             mount_result={"pass": False, "detail": "mount missing"},
         )
+        plex.get_trash_items.assert_not_called()
+        plex.empty_trash.assert_not_called()
+
+    def test_readonly_status_preload_never_reads_or_empties_trash(self):
+        instance, library, config, plex = self._run_objects()
+        history_before = list(runner.get_history())
+        with patch(
+            "src.runner._collect_library_checks",
+            return_value=({"Mount": {"pass": True, "detail": "ok"}}, 100),
+        ):
+            checks = runner.refresh_protection_status(
+                instance, library, config, plex,
+                {"Plex": {"pass": True, "detail": "ok"}},
+            )
+
+        self.assertTrue(checks["Mount"]["pass"])
+        status = runner.get_instance_status()[instance.name][library.name]
+        self.assertEqual(status["last_status"], "preflight_pass")
+        self.assertEqual(status["status_source"], "preflight")
+        self.assertEqual(runner.get_history(), history_before)
         plex.get_trash_items.assert_not_called()
         plex.empty_trash.assert_not_called()
 

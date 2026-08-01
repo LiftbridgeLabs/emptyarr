@@ -164,10 +164,22 @@ overrides. Libraries without a `cron` value inherit `schedule.default_cron`.
 half-hour boundary. A daily time selected in the UI is evaluated in the
 container timezone (`TZ`).
 
-There is no automatic run immediately at startup. The first run is the next
-clock time matching the effective schedule, and the dashboard shows that
-countdown as soon as the scheduler starts. **Run now** remains available when
-an immediate safety run is wanted.
+There is no automatic Empty Trash run immediately at startup. Emptyarr does run
+the non-destructive safety checks in the background so the dashboard can show
+current Plex, mount, provider, and file-threshold health before the first
+scheduled protection run. This preload does not inspect trash, write history,
+send notifications, or call Plex's Empty Trash endpoint. **Run now** remains
+available when an immediate full safety run is wanted.
+
+### Plex match audit
+
+Open **Match Audit** to run an explicit, read-only scan for top-level movie and
+show items whose primary Plex GUID starts with `local://`. Emptyarr makes one
+bulk Plex request per configured movie or TV library, saves the latest result,
+and displays the title, rating key, metadata key, and a direct Plex details
+link. This audit is never scheduled and does not affect the Empty Trash safety
+gate. It uses the existing Plex connection and requires no additional Docker
+variables or volume mappings.
 
 ### Manual Plex part timestamp repair
 
@@ -220,6 +232,25 @@ directory is mounted, **Discover** locates
 `com.plexapp.plugins.library.db`; the UI saves the per-server configuration and
 shows whether each instance is ready. Docker isolation means Emptyarr cannot
 create host mounts or infer a host appdata path from a Plex API token.
+
+#### Unraid container fields
+
+The shipped Unraid template exposes two optional, read-only Plex database
+directory mappings at `/plex-db/server-1` and `/plex-db/server-2`. Use one for
+each Plex server hosted on the same Unraid machine. Then use **Settings →
+Timestamp Repair → Discover** and select the database found for that instance.
+
+For each enabled local repair instance, add one additional Unraid **Path**
+manually for every allowed repair prefix:
+
+- Host path: the narrow symlink folder Emptyarr may repair.
+- Container path: the exact same absolute path stored in the Plex database.
+- Access mode: read/write with slave propagation (`rw,slave`).
+
+There is deliberately no generic `/repairable` directory and the template does
+not create one: the correct path is specific to each media layout. Do not make
+the broad media-root mapping writable. Neither Match Audit nor the startup
+safety preload needs these repair-only mappings.
 
 #### Plex on another machine
 

@@ -28,7 +28,7 @@ from src import runner
 from src.runner import get_scheduling_enabled, set_scheduling_enabled
 from src.providers import get_account_status, get_api_key
 from src.providers import _ENV_KEYS as _PROVIDER_ENV_KEYS
-from src.storage import atomic_write_yaml
+from src.storage import atomic_write_json, atomic_write_yaml
 from src.logging_manager import LogManager
 from src import plex_auth
 from src import notifications
@@ -92,10 +92,31 @@ _remote_repair_lock = threading.RLock()
 _remote_repair: dict = {}
 _worker_scan_contexts: dict[str, dict] = {}
 _worker_recovery_cache: dict[str, tuple[float, bool]] = {}
+_metadata_audit_path = Path(CONFIG_PATH).resolve().parent / "metadata-audits.json"
+_metadata_audit_lock = threading.Lock()
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _read_metadata_audits() -> dict:
+    try:
+        value = json.loads(_metadata_audit_path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _plex_details_url(machine_id: str, metadata_key: str) -> str:
+    if not machine_id or not metadata_key:
+        return ""
+    return (
+        "https://app.plex.tv/desktop/#!/server/"
+        + urllib.parse.quote(machine_id, safe="")
+        + "/details?key="
+        + urllib.parse.quote(metadata_key, safe="")
+    )
 
 app = Flask(__name__)
 
@@ -149,6 +170,7 @@ scheduler      = BackgroundScheduler()
 _next_runs: dict = {}
 _runtime_lock = threading.RLock()
 _config_file_lock = threading.Lock()
+_status_refresh_lock = threading.Lock()
 
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
@@ -195,6 +217,39 @@ def _refresh_next_runs():
             _update_next(inst.name, lib.name)
 
 
+def _start_readonly_status_refresh(target_config: AppConfig = None,
+                                    clients: dict[str, PlexClient] = None) -> None:
+    """Refresh dashboard safety state in the background without touching trash."""
+    target = target_config or config
+    target_clients = clients or plex_clients
+
+    def refresh():
+        if not _status_refresh_lock.acquire(blocking=False):
+            return
+        try:
+            for instance in target.instances:
+                plex = target_clients.get(instance.name)
+                if plex is None:
+                    continue
+                plex_checks = runner.run_instance_checks(instance, plex)
+                for library in instance.libraries:
+                    try:
+                        runner.refresh_protection_status(
+                            instance, library, target, plex, plex_checks,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "[%s / %s] Read-only status refresh failed (%s)",
+                            instance.name, library.name, type(exc).__name__,
+                        )
+        finally:
+            _status_refresh_lock.release()
+
+    threading.Thread(
+        target=refresh, daemon=True, name="protection-status-refresh",
+    ).start()
+
+
 def _setup_scheduler(new_config: AppConfig = None):
     target = new_config or config
     triggers = {}
@@ -228,6 +283,7 @@ except Exception as exc:
     scheduler.remove_all_jobs()
 scheduler.start()
 _refresh_next_runs()
+_start_readonly_status_refresh()
 
 
 def _validate_provider_checks(checks, context: str) -> None:
@@ -457,6 +513,7 @@ def _apply_runtime_config(new_config: AppConfig) -> None:
         for library in instance.libraries
     }
     runner.prune_runtime_state(valid)
+    _start_readonly_status_refresh(new_config, new_clients)
     logging.getLogger().setLevel(new_config.log_level.upper())
     log_manager.configure(
         new_config.log_max_file_size_mb,
@@ -651,6 +708,99 @@ def api_status():
 @require_auth
 def api_history():
     return jsonify(runner.get_history())
+
+
+@app.route("/api/metadata-audit/status", methods=["GET"])
+@require_auth
+def api_metadata_audit_status():
+    with _runtime_lock:
+        instances = [instance.name for instance in config.instances]
+    return jsonify({
+        "instances": instances,
+        "audits": _read_metadata_audits(),
+    })
+
+
+@app.route("/api/metadata-audit/run", methods=["POST"])
+@require_auth
+def api_metadata_audit_run():
+    requested = str((request.get_json(silent=True) or {}).get("instance", ""))
+    with _runtime_lock:
+        instance = next((item for item in config.instances
+                         if item.name == requested), None)
+        plex = plex_clients.get(requested)
+    if instance is None or plex is None:
+        return jsonify({"ok": False, "error": "Plex instance not found"}), 404
+
+    try:
+        sections = plex.get_sections()
+    except Exception as exc:
+        logger.warning("Metadata audit could not list Plex libraries for %s (%s)",
+                       requested, type(exc).__name__)
+        return jsonify({
+            "ok": False,
+            "error": "Plex libraries could not be read",
+        }), 502
+
+    by_id = {str(section["id"]): section for section in sections}
+    by_name = {str(section["title"]).casefold(): section for section in sections}
+    machine_id = instance.machine_id or plex.get_machine_identifier() or ""
+    libraries = []
+    total_items = 0
+    unmatched_count = 0
+    error_count = 0
+    for library in instance.libraries:
+        section = (
+            by_id.get(str(library.section_id))
+            if library.section_id else by_name.get(library.name.casefold())
+        )
+        if not section or section.get("type") not in {"movie", "show"}:
+            continue
+        try:
+            result = plex.get_unmatched_items(str(section["id"]))
+            items = result["items"]
+            for item in items:
+                item["plex_url"] = _plex_details_url(
+                    machine_id, item["metadata_key"],
+                )
+            library_result = {
+                "name": library.name,
+                "section_id": str(section["id"]),
+                "type": section["type"],
+                "total_items": result["total_items"],
+                "unmatched_count": len(items),
+                "items": items,
+            }
+            total_items += result["total_items"]
+            unmatched_count += len(items)
+        except Exception as exc:
+            logger.warning("Metadata audit failed for %s / %s (%s)",
+                           requested, library.name, type(exc).__name__)
+            library_result = {
+                "name": library.name,
+                "section_id": str(section["id"]),
+                "type": section["type"],
+                "error": "Plex library items could not be read",
+                "unmatched_count": 0,
+                "items": [],
+            }
+            error_count += 1
+        libraries.append(library_result)
+
+    audit = {
+        "instance": instance.name,
+        "machine_id": machine_id,
+        "audited_at": _utc_now(),
+        "total_items": total_items,
+        "unmatched_count": unmatched_count,
+        "error_count": error_count,
+        "libraries": libraries,
+    }
+    with _metadata_audit_lock:
+        audits = _read_metadata_audits()
+        audits[instance.name] = audit
+        atomic_write_json(str(_metadata_audit_path), audits)
+    return jsonify({"ok": True, **audit})
 
 
 def _timestamp_runtime(instance_name: str, section_id: str = ""):
