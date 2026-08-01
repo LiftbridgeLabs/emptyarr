@@ -684,6 +684,24 @@ def _resolved_repair_libraries(instance, plex) -> list[dict]:
     return libraries
 
 
+def _enrich_repair_audit(result: dict, plex) -> dict:
+    """Add Plex library sizes to an audit without making them a safety input."""
+    total = 0
+    libraries = result.get("libraries", [])
+    all_known = bool(libraries)
+    for library in libraries:
+        count = plex.get_library_item_count(
+            str(library.get("library_section_id", "")),
+        )
+        if isinstance(count, int) and count >= 0:
+            library["total_items"] = count
+            total += count
+        else:
+            all_known = False
+    result["total_library_items"] = total if all_known else None
+    return result
+
+
 def _worker_payload(instance, plex) -> dict:
     repair = instance.timestamp_repair
     return {
@@ -816,7 +834,8 @@ def api_timestamp_repair_audit():
             if not worker:
                 raise ValueError("Configured repair worker was not found")
             result = RepairWorkerClient(worker).audit(_worker_payload(instance, plex))
-            timestamp_repair.save_audit(result)
+        _enrich_repair_audit(result, plex)
+        timestamp_repair.save_audit(result)
         return jsonify(result)
     except Exception as exc:
         logger.error("Timestamp repair audit failed for %s (%s)",

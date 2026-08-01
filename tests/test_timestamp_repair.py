@@ -123,6 +123,18 @@ class TimestampRepairTransactionTests(unittest.TestCase):
         history = json.loads(self.manager.history_path.read_text(encoding="utf-8"))
         self.assertEqual(history[0]["state"], "completed")
 
+    def test_status_counts_only_completed_repaired_files(self):
+        self.manager.history_path.parent.mkdir(parents=True, exist_ok=True)
+        self.manager.history_path.write_text(json.dumps([
+            {"instance": "Plex", "state": "completed", "renames": [{}, {}]},
+            {"instance": "Plex", "state": "failed", "renames": [{}]},
+            {"instance": "Other", "state": "completed", "renames": [{}]},
+        ]), encoding="utf-8")
+
+        totals = self.manager.status()["repair_totals"]
+
+        self.assertEqual(totals, {"Plex": 2, "Other": 1})
+
     def test_ambiguous_recovery_keeps_manifest_for_operator(self):
         transaction = {
             "transaction_id": "tx", "instance": "Plex", "library": "Movies",
@@ -219,6 +231,31 @@ class TimestampRepairConfigTests(unittest.TestCase):
 
 
 class TimestampRepairApiTests(unittest.TestCase):
+    def test_audit_enrichment_adds_complete_library_total(self):
+        audit = {"libraries": [
+            {"library_section_id": "1", "library": "Movies"},
+            {"library_section_id": "2", "library": "TV Shows"},
+        ]}
+        plex = Mock()
+        plex.get_library_item_count.side_effect = [1200, 3400]
+
+        result = app._enrich_repair_audit(audit, plex)
+
+        self.assertEqual(result["total_library_items"], 4600)
+        self.assertEqual(result["libraries"][1]["total_items"], 3400)
+
+    def test_audit_enrichment_avoids_partial_library_total(self):
+        audit = {"libraries": [
+            {"library_section_id": "1", "library": "Movies"},
+            {"library_section_id": "2", "library": "TV Shows"},
+        ]}
+        plex = Mock()
+        plex.get_library_item_count.side_effect = [1200, None]
+
+        result = app._enrich_repair_audit(audit, plex)
+
+        self.assertIsNone(result["total_library_items"])
+
     def test_run_rejects_folder_not_returned_by_latest_audit(self):
         client = app.app.test_client()
         with client.session_transaction() as browser_session:

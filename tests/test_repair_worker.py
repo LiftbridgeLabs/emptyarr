@@ -275,6 +275,14 @@ class RepairWorkerControllerTests(unittest.TestCase):
         self.assertIn("Discover databases", html)
         self.assertIn("EMPTYARR_ROLE=repair-worker", html)
 
+    def test_repair_dashboard_uses_large_instance_metric_layout(self):
+        html = app.app.test_client().get("/").get_data(as_text=True)
+        self.assertIn('class="repair-instance-grid"', html)
+        self.assertIn("Affected files", html)
+        self.assertIn("Files fixed", html)
+        self.assertIn("Library items", html)
+        self.assertIn("View issues", html)
+
 
 if __name__ == "__main__":
     unittest.main()

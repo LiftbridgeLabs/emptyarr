@@ -252,11 +252,21 @@ class TimestampRepairManager:
     def status(self) -> dict:
         with self._guard:
             runtime = dict(self._status)
+        history = self._read_json(self.history_path, [])
+        repair_totals = {}
+        for item in history:
+            if item.get("state") != "completed":
+                continue
+            instance = str(item.get("instance", ""))
+            repair_totals[instance] = repair_totals.get(instance, 0) + len(
+                item.get("renames", [])
+            )
         return {
             **runtime,
             "active_transaction": self.active_transaction(),
             "audits": self._read_json(self.audit_path, {}),
-            "history": self._read_json(self.history_path, [])[:20],
+            "history": history[:20],
+            "repair_totals": repair_totals,
         }
 
     def audited_folder(self, instance_name: str, section_id: str, folder: str) -> bool:
