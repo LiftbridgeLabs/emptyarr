@@ -92,12 +92,39 @@ _remote_repair_lock = threading.RLock()
 _remote_repair: dict = {}
 _worker_scan_contexts: dict[str, dict] = {}
 _worker_recovery_cache: dict[str, tuple[float, str | None, bool]] = {}
+_remote_pending_path = timestamp_repair.root / "controller-remote-active.json"
+try:
+    _remote_pending_repair = json.loads(
+        _remote_pending_path.read_text(encoding="utf-8"),
+    )
+    if not isinstance(_remote_pending_repair, dict):
+        _remote_pending_repair = {}
+except (OSError, ValueError):
+    _remote_pending_repair = {}
 _metadata_audit_path = Path(CONFIG_PATH).resolve().parent / "metadata-audits.json"
 _metadata_audit_lock = threading.Lock()
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _set_remote_pending(payload: dict) -> None:
+    with _remote_repair_lock:
+        _remote_pending_repair.clear()
+        _remote_pending_repair.update(payload)
+        atomic_write_json(str(_remote_pending_path), _remote_pending_repair)
+
+
+def _clear_remote_pending(worker_name: str = "") -> None:
+    with _remote_repair_lock:
+        if worker_name and _remote_pending_repair.get("worker") != worker_name:
+            return
+        _remote_pending_repair.clear()
+        try:
+            _remote_pending_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _read_metadata_audits() -> dict:
@@ -984,10 +1011,17 @@ def _remote_recovery_required(instance_name: str | None = None) -> bool:
             return False
         workers = {assigned.timestamp_repair.worker}
     for name in workers:
+        with _remote_repair_lock:
+            pending_instance = (
+                str(_remote_pending_repair.get("instance", "")).strip() or None
+                if _remote_pending_repair.get("worker") == name else None
+            )
         cached = _worker_recovery_cache.get(name)
         if cached and now - cached[0] < 5:
             active_instance, unverified = cached[1], cached[2]
-            if unverified or (
+            if unverified and pending_instance:
+                active_instance = pending_instance
+            if (
                 active_instance is not None
                 and (instance_name is None or active_instance in {"*", instance_name})
             ):
@@ -1005,11 +1039,15 @@ def _remote_recovery_required(instance_name: str | None = None) -> bool:
                     if isinstance(active, dict) else None
                 )
                 unverified = False
+                if active_instance is None:
+                    _clear_remote_pending(name)
             except Exception:
-                # Fail closed: an unreachable worker could have renamed paths.
-                pass
+                # Unavailability alone is not a recovery transaction. A
+                # persisted dispatch marker is affirmative evidence that this
+                # controller may have handed the worker a repair.
+                active_instance = pending_instance
         _worker_recovery_cache[name] = (now, active_instance, unverified)
-        if unverified or (
+        if (
             active_instance is not None
             and (instance_name is None or active_instance in {"*", instance_name})
         ):
@@ -1258,12 +1296,25 @@ def api_timestamp_repair_run():
                     "folder": folder,
                     "expected_files": sorted(expected_files),
                 }
+                pre_dispatch_status = RepairWorkerClient(
+                    worker, timeout=3,
+                ).status()
+                if pre_dispatch_status.get("active_transaction"):
+                    raise RuntimeError("Repair worker recovery is required")
                 with _remote_repair_lock:
                     _remote_repair.update({
                         "state": "running_on_worker", "last_heartbeat": _utc_now(),
                     })
+                _set_remote_pending({
+                    "worker": worker.name, "instance": instance.name,
+                    "library": library.name, "folder": folder,
+                    "transaction_id": run_id, "dispatched_at": _utc_now(),
+                })
+                _worker_recovery_cache.pop(worker.name, None)
                 result = RepairWorkerClient(worker).run(payload)
                 worker_status = RepairWorkerClient(worker, timeout=3).status()
+                if not worker_status.get("active_transaction"):
+                    _clear_remote_pending(worker.name)
                 timestamp_repair.merge_history(worker_status.get("history", []))
         except Exception as exc:
             result = {"ok": False, "error": str(exc)}
@@ -1316,11 +1367,13 @@ def api_timestamp_repair_recover():
                 status = RepairWorkerClient(worker, timeout=3).status()
                 if status.get("active_transaction"):
                     result = RepairWorkerClient(worker).recover(instance.name)
-                    timestamp_repair.merge_history(
-                        RepairWorkerClient(worker, timeout=3).status().get("history", [])
-                    )
+                    recovered_status = RepairWorkerClient(worker, timeout=3).status()
+                    timestamp_repair.merge_history(recovered_status.get("history", []))
+                    if result.get("ok") and not recovered_status.get("active_transaction"):
+                        _clear_remote_pending(worker.name)
                     _worker_recovery_cache.pop(worker.name, None)
                     break
+                _clear_remote_pending(worker.name)
             except Exception as exc:
                 result = {"ok": False, "error": f"Worker {worker.name} is unavailable"}
                 logger.warning("Worker recovery check failed (%s)", type(exc).__name__)

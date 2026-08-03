@@ -255,21 +255,65 @@ class RepairWorkerControllerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         plex.scan_path.assert_not_called()
 
-    def test_unreachable_remote_worker_fails_closed(self):
+    def test_unconfigured_unreachable_worker_does_not_invent_recovery(self):
         worker = RepairWorkerConfig(
             "altmount-worker", "http://worker:8223", "z" * 32,
             "http://controller:8222",
         )
         instance = Mock()
+        instance.name = "vm-altmount"
         instance.timestamp_repair = TimestampRepairConfig(
             enabled=True, worker=worker.name,
             database_path="/plex-db/db", allowed_prefixes=["/links"],
         )
         with patch.object(app, "config", AppConfig(
             instances=[instance], repair_workers=[worker],
-        )), patch("app.RepairWorkerClient.status", side_effect=RuntimeError("offline")):
+        )), patch(
+            "app.RepairWorkerClient.status", side_effect=RuntimeError("offline"),
+        ), patch.dict(app._remote_pending_repair, {}, clear=True):
             app._worker_recovery_cache.clear()
-            self.assertTrue(app._combined_recovery_required("anything"))
+            self.assertFalse(app._combined_recovery_required("anything"))
+            self.assertFalse(app._combined_recovery_required(
+                "vm-altmount", "empty_trash",
+            ))
+
+    def test_unreachable_worker_only_blocks_trash_after_a_repair_was_dispatched(self):
+        worker = RepairWorkerConfig(
+            "altmount-worker", "http://worker:8223", "z" * 32,
+            "http://controller:8222",
+        )
+        instance = PlexInstanceConfig(
+            "vm-altmount", "http://plex", "token", [],
+            timestamp_repair=TimestampRepairConfig(
+                enabled=True, worker=worker.name,
+                database_path="/plex-db/db", allowed_prefixes=["/links"],
+            ),
+        )
+        pending = {"worker": worker.name, "instance": instance.name}
+        with patch.object(app, "config", AppConfig(
+            instances=[instance], repair_workers=[worker],
+        )), patch(
+            "app.RepairWorkerClient.status", side_effect=RuntimeError("offline"),
+        ), patch.dict(app._remote_pending_repair, pending, clear=True):
+            app._worker_recovery_cache.clear()
+            self.assertTrue(app._combined_recovery_required(
+                "vm-altmount", "empty_trash",
+            ))
+
+    def test_remote_dispatch_marker_is_persisted_and_cleared(self):
+        marker = Path(__file__).parent / ".runtime-controller-remote-active.json"
+        marker.unlink(missing_ok=True)
+        with patch.object(app, "_remote_pending_path", marker), \
+             patch.dict(app._remote_pending_repair, {}, clear=True):
+            app._set_remote_pending({
+                "worker": "altmount-worker", "instance": "vm-altmount",
+            })
+            self.assertEqual(
+                json.loads(marker.read_text(encoding="utf-8"))["instance"],
+                "vm-altmount",
+            )
+            app._clear_remote_pending("altmount-worker")
+            self.assertFalse(marker.exists())
 
     def test_remote_recovery_is_scoped_for_empty_trash_but_global_for_repairs(self):
         worker = RepairWorkerConfig(
