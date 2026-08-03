@@ -2032,7 +2032,8 @@ function updateRepairRollup(status) {
   const statusEl = document.getElementById('rollup-repair-status');
   const copy = document.getElementById('rollup-repair-copy');
   if (status.running || status.active_transaction) {
-    card.className = 'rollup-card warn'; statusEl.textContent = 'Repair operation active'; copy.textContent = 'Empty Trash remains locked until repair or recovery completes.';
+    const recovery = status.active_transaction?.state === 'recovery_required';
+    card.className = 'rollup-card warn'; statusEl.textContent = recovery ? 'Timestamp recovery required' : 'Repair operation active'; copy.textContent = 'Empty Trash remains locked until repair or recovery completes.';
   } else if (affected) {
     card.className = 'rollup-card warn'; statusEl.textContent = `${affected.toLocaleString()} affected file${affected===1?'':'s'}`; copy.textContent = 'Review the saved scan and explicitly approve one folder at a time.';
   } else if (ready) {
@@ -2047,8 +2048,8 @@ function renderRepairOverview(status) {
   document.getElementById('repair-active').innerHTML = active ? `
     <div class="repair-active-card">
       <div class="repair-active-title">${h(active.state.replaceAll('_',' '))} &middot; ${h(active.instance)} / ${h(active.library)}</div>
-      <div class="repair-active-meta">${h(active.folder)} &middot; ${Number(active.scan_elapsed_seconds||0)}s elapsed &middot; heartbeat ${h(fmtAgo(active.last_heartbeat))}</div>
-      ${renderRepairProgress(active.state)}
+      <div class="repair-active-meta">${active.worker?`Worker: ${h(active.worker)} &middot; `:''}${h(active.folder)} &middot; ${Number(active.scan_elapsed_seconds||0)}s elapsed &middot; heartbeat ${h(fmtAgo(active.last_heartbeat))}</div>
+      ${renderRepairProgress(active.recovery_state || active.state)}
       <div style="margin-top:14px;display:flex;gap:10px;"><button class="btn btn-warn" onclick="cancelRepair()">Cancel safely</button>${active.state === 'recovery_required' ? '<button class="btn btn-primary" onclick="recoverRepair()">Recover</button>' : ''}</div>
     </div>` : (status.state === 'failed' && status.error ? `<div class="repair-warning" style="border-color:var(--fail-line);color:var(--fail2);">Last repair attempt failed: ${h(status.error)}</div>` : '');
 
@@ -2103,10 +2104,11 @@ function renderRepairOverview(status) {
       </div>`;
     }).join('');
     const workerLabel = instance.worker === 'local' ? 'Main Emptyarr container' : `Worker: ${h(instance.worker)}`;
-    const readinessLabel = instance.ready ? 'Ready' : instance.enabled ? 'Setup required' : 'Disabled';
+    const readinessLabel = instance.blocked ? 'Recovery blocked' : instance.ready ? 'Ready' : instance.enabled ? 'Setup required' : 'Disabled';
+    const available = instance.ready && !instance.blocked;
     const expanded = _repairExpanded.has(instance.name);
     return `<section class="repair-instance-card ${instance.ready?'':'not-ready'} ${expanded?'':'repair-collapsed'}">
-      <div class="repair-instance-head"><div><div class="repair-instance-kind">Plex server</div><div class="repair-instance-name">${h(instance.name)}</div></div><div class="repair-instance-head-actions"><div class="repair-status-pill ${instance.ready?'':'warn'}"><span class="repair-status-dot"></span>${readinessLabel}</div><button class="btn btn-secondary" data-repair-toggle="${h(instance.name)}">${expanded?'Hide details':'Show details'}</button></div></div>
+      <div class="repair-instance-head"><div><div class="repair-instance-kind">Plex server</div><div class="repair-instance-name">${h(instance.name)}</div></div><div class="repair-instance-head-actions"><div class="repair-status-pill ${available?'':'warn'}"><span class="repair-status-dot"></span>${readinessLabel}</div><button class="btn btn-secondary" data-repair-toggle="${h(instance.name)}">${expanded?'Hide details':'Show details'}</button></div></div>
       <div class="repair-overview-body">
       <div class="repair-metrics">
         <div class="repair-metric"><div class="repair-metric-label">Affected files</div><div class="repair-metric-value affected">${affected.toLocaleString()}</div></div>
@@ -2116,7 +2118,7 @@ function renderRepairOverview(status) {
       ${excludedPaths ? `<div class="repair-warning" style="margin:0 0 16px;border-color:var(--fail-line);color:var(--fail2);"><strong>${excludedPaths} database entr${excludedPaths===1?'y':'ies'} excluded from repair:</strong> ${h(pathIssueSummary)}. View the affected library for details.</div>` : ''}
       ${audit?.database_count_changed ? `<div class="repair-warning" style="margin:0 0 16px;"><strong>Database count changed since this audit:</strong> ${Number(audit.database_distinct_files||0).toLocaleString()} then, ${Number(audit.live_database_distinct_files||0).toLocaleString()} now. Run a fresh audit before repairing.</div>` : ''}
       <div class="repair-library-panel"><div class="repair-library-panel-head"><span>Library audit</span><span>${audit ? `snapshot ${h(fmtTime(audit.audited_at))}` : 'not audited'}</span></div>${libraryRows || `<div class="repair-empty-audit"><div><strong style="display:block;color:var(--bright);font-size:17px;margin-bottom:6px;">${instance.ready?'Run the first audit':'Finish setup to begin'}</strong>${h(instance.readiness)}</div></div>`}</div>
-      <div class="repair-instance-footer"><div class="repair-instance-footnote">${workerLabel}<br>${audit ? `${affected.toLocaleString()} repairable files across ${Number(audit.affected_folders||0).toLocaleString()} folders · audit ${h(fmtAgo(audit.audited_at))}` : 'No audit results recorded yet'}</div><div class="repair-instance-actions">${!instance.ready?`<button class="btn btn-secondary" data-configure-repair="${h(instance.name)}">Configure</button>`:''}<button class="btn btn-primary" data-audit-instance="${h(instance.name)}" ${instance.ready&&!status.running?'':'disabled'}>Audit now</button></div></div></div>
+      <div class="repair-instance-footer"><div class="repair-instance-footnote">${workerLabel}<br>${audit ? `${affected.toLocaleString()} repairable files across ${Number(audit.affected_folders||0).toLocaleString()} folders · audit ${h(fmtAgo(audit.audited_at))}` : 'No audit results recorded yet'}</div><div class="repair-instance-actions">${!instance.ready?`<button class="btn btn-secondary" data-configure-repair="${h(instance.name)}">Configure</button>`:''}<button class="btn btn-primary" data-audit-instance="${h(instance.name)}" ${instance.ready&&!status.running&&!status.active_transaction?'':'disabled'}>Audit now</button></div></div></div>
     </section>`;
   }).join('') || '<div class="empty-msg">No Plex instances are configured.</div>';
 
@@ -2163,7 +2165,7 @@ function openRepairLibrary(instance, section, title) {
     return `
     <div class="repair-folder-card"><div class="repair-folder-title">${h(folder.title)}</div><div class="repair-folder-subtitle">${h(folder.subtitle || folder.library)} &middot; ${folder.files.length} affected file${folder.files.length===1?'':'s'}</div>
       <div class="repair-files">${folder.files.map(file => `<div class="repair-file"><strong>${h(file.item_title || file.file_path.split(/[\\/]/).pop())}</strong><div class="repair-file-path">${h(file.file_path)}</div><div class="repair-change"><div><span>Plex timestamp</span><strong class="bad">${h(formatUnixDate(file.stored_timestamp))} (${h(file.stored_timestamp)})</strong></div><div><span>Filesystem timestamp</span><strong>${h(file.filesystem_timestamp_iso ? fmtTime(file.filesystem_timestamp_iso) : 'Unavailable')}</strong></div><div><span>Status</span><strong class="bad">Negative Plex part timestamp</strong></div></div></div>`).join('')}</div>
-      <div class="repair-folder-footer"><span class="badge skipped">${staleAudit?'fresh audit required':'manual only'}</span><button class="btn btn-primary" data-repair-payload="${h(encodeURIComponent(JSON.stringify({instance,section:folder.library_section_id,folder:folder.folder,files:folder.files,libraryType:folder.library_type})))}" ${_repairStatus.running||staleAudit?'disabled':''}>${action}</button></div>
+      <div class="repair-folder-footer"><span class="badge skipped">${staleAudit?'fresh audit required':'manual only'}</span><button class="btn btn-primary" data-repair-payload="${h(encodeURIComponent(JSON.stringify({instance,section:folder.library_section_id,folder:folder.folder,files:folder.files,libraryType:folder.library_type})))}" ${_repairStatus.running||_repairStatus.active_transaction||staleAudit?'disabled':''}>${action}</button></div>
     </div>`;
   }).join('');
   const issueCards = pathIssues.map(issue => `<div class="repair-folder-card repair-path-issue"><div class="repair-folder-title">${h(issue.item_title || issue.file_path.split(/[\\/]/).pop())}</div><div class="repair-folder-subtitle">Excluded from automatic repair</div><div class="repair-files"><div class="repair-file"><div class="repair-file-path">${h(issue.file_path)}</div><div class="repair-change"><div><span>Plex timestamp</span><strong class="bad">${h(formatUnixDate(issue.stored_timestamp))} (${h(issue.stored_timestamp)})</strong></div><div><span>Path status</span><strong class="bad">${h(pathStateLabel(issue.path_state))}</strong></div><div><span>Action</span><strong>Resolve the filesystem path before a fresh audit</strong></div></div></div></div></div>`).join('');

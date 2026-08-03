@@ -472,6 +472,10 @@ class TimestampRepairManager:
             return self._failure("Plex library section is unavailable")
         with lease(instance.name, operation="timestamp_repair") as (acquired, reason):
             if not acquired:
+                logger.warning(
+                    "[%s / %s] Timestamp repair blocked: %s",
+                    instance.name, library.name, reason,
+                )
                 return self._failure(reason)
             transaction = None
             manifest_persisted = False

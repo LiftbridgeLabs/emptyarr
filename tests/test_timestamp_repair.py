@@ -9,7 +9,8 @@ from unittest.mock import Mock, patch
 
 import app
 from src.config import (AppConfig, LibraryConfig, PathConfig,
-                        PlexInstanceConfig, TimestampRepairConfig, parse_config)
+                        PlexInstanceConfig, RepairWorkerConfig,
+                        TimestampRepairConfig, parse_config)
 from src.timestamp_repair import (AffectedPart, TimestampRepairManager,
                                   _inside, temporary_name)
 from src import runner
@@ -305,6 +306,7 @@ class TimestampRepairApiTests(unittest.TestCase):
         self.assertIn("Temporary rename", html)
         self.assertIn("Second Plex scan", html)
         self.assertIn("Excluded from automatic repair", html)
+        self.assertIn("Recovery blocked", html)
 
     def test_audit_enrichment_adds_complete_library_total(self):
         audit = {"libraries": [
@@ -353,6 +355,83 @@ class TimestampRepairApiTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 400)
         self.assertIn("latest server-side audit", response.get_json()["error"])
+
+    def test_remote_persisted_transaction_is_exposed_as_recovery_blocker(self):
+        worker = RepairWorkerConfig(
+            "altmount-worker", "http://worker:8223", "z" * 32,
+            "http://controller:8222",
+        )
+        instance = PlexInstanceConfig(
+            "vm-altmount", "http://plex", "token", [],
+            timestamp_repair=TimestampRepairConfig(
+                enabled=True, worker=worker.name,
+                database_path="/plex-db/library.db",
+                allowed_prefixes=["/links"],
+            ),
+        )
+        local_status = {
+            "running": False, "state": "idle", "active_transaction": None,
+            "audits": {}, "history": [], "repair_totals": {},
+        }
+        remote_status = {
+            "running": False, "audits": {},
+            "active_transaction": {
+                "state": "renamed", "instance": "vm-altmount",
+                "library": "TV Shows", "folder": "/links/Show",
+            },
+        }
+        with patch.object(app, "config", AppConfig(
+            instances=[instance], repair_workers=[worker],
+        )), patch.object(
+            app.timestamp_repair, "status", return_value=local_status,
+        ), patch(
+            "app.RepairWorkerClient.status", return_value=remote_status,
+        ), patch.object(
+            app, "_repair_readiness", return_value=(True, "Connected"),
+        ):
+            response = app.app.test_client().get(
+                "/api/timestamp-repair/status",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["active_transaction"]["state"],
+                         "recovery_required")
+        self.assertEqual(payload["active_transaction"]["recovery_state"],
+                         "renamed")
+        self.assertEqual(payload["active_transaction"]["worker"],
+                         "altmount-worker")
+        self.assertTrue(payload["instances"][0]["blocked"])
+
+    def test_remote_recovery_blocks_run_before_starting_thread(self):
+        client = app.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_csrf_token"] = "known-token"
+        library = LibraryConfig("TV Shows", "physical", [], section_id="2")
+        instance = PlexInstanceConfig(
+            "Plex", "http://plex", "token", [library],
+            timestamp_repair=TimestampRepairConfig(
+                enabled=True, database_path="/plex-db/library.db",
+                allowed_prefixes=["/links"],
+            ),
+        )
+        with patch.object(app, "config", AppConfig(instances=[instance])), \
+             patch.object(app, "_timestamp_runtime",
+                          return_value=(instance, library, Mock())), \
+             patch.object(app, "_remote_recovery_required", return_value=True), \
+             patch("app.threading.Thread") as thread, \
+             self.assertLogs("emptyarr", level="WARNING") as logs:
+            response = client.post(
+                "/api/timestamp-repair/run",
+                json={"instance": "Plex", "library_section_id": "2",
+                      "folder": "/links/Show"},
+                headers={"X-CSRF-Token": "known-token"},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("recovery is required", response.get_json()["error"])
+        self.assertTrue(any("Timestamp repair blocked" in line for line in logs.output))
+        thread.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -1026,6 +1026,15 @@ def _repair_readiness(instance) -> tuple[bool, str]:
 @require_auth
 def api_timestamp_repair_status():
     status = timestamp_repair.status()
+    local_active = status.get("active_transaction")
+    if isinstance(local_active, dict) and not status.get("running"):
+        local_active = {
+            **local_active,
+            "recovery_state": local_active.get("state", "prepared"),
+            "state": "recovery_required",
+        }
+        status["active_transaction"] = local_active
+        status["state"] = "recovery_required"
     with _remote_repair_lock:
         external = dict(_remote_repair)
     if external.get("running"):
@@ -1073,6 +1082,28 @@ def api_timestamp_repair_status():
             ):
                 if key in worker_audit:
                     local_audit[key] = worker_audit[key]
+    remote_recoveries = []
+    for worker_name, worker_status in worker_statuses.items():
+        active = worker_status.get("active_transaction")
+        if isinstance(active, dict):
+            recovery_state = active.get("state", "prepared")
+            remote_recoveries.append({
+                **active,
+                **({
+                    "recovery_state": recovery_state,
+                    "state": "recovery_required",
+                } if not worker_status.get("running") else {}),
+                "worker": worker_name,
+                "remote": True,
+            })
+    if remote_recoveries:
+        status["remote_recoveries"] = remote_recoveries
+        if not status.get("active_transaction"):
+            status["active_transaction"] = remote_recoveries[0]
+            status["state"] = remote_recoveries[0].get(
+                "state", "recovery_required",
+            )
+    maintenance_blocked = bool(status.get("active_transaction"))
     status["instances"] = [
         {
             "name": instance.name,
@@ -1080,6 +1111,7 @@ def api_timestamp_repair_status():
             "worker": instance.timestamp_repair.worker,
             "ready": (readiness := _repair_readiness(instance))[0],
             "readiness": readiness[1],
+            "blocked": maintenance_blocked,
             "max_files_per_folder": instance.timestamp_repair.max_files_per_folder,
         }
         for instance in config.instances
@@ -1127,6 +1159,16 @@ def api_timestamp_repair_run():
     instance, library, plex = _timestamp_runtime(instance_name, section_id)
     if not instance or not library or not plex:
         return jsonify({"error": "Configured Plex instance/library not found"}), 404
+    if _remote_recovery_required():
+        logger.warning(
+            "[%s / %s] Timestamp repair blocked: a remote worker requires "
+            "recovery or its recovery state cannot be verified",
+            instance.name, library.name,
+        )
+        return jsonify({
+            "error": "Remote repair worker recovery is required before "
+                     "another timestamp repair can start",
+        }), 409
     if not timestamp_repair.audited_folder(instance_name, section_id, folder):
         return jsonify({"error": "Folder is not present in the latest server-side audit"}), 400
     expected_files = timestamp_repair.audited_files(
