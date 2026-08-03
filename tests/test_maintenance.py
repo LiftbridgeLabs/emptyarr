@@ -6,7 +6,7 @@ from src.maintenance import lease
 
 
 class MaintenanceLeaseTests(unittest.TestCase):
-    def test_concurrent_empty_trash_runs_wait_then_acquire(self):
+    def test_same_server_empty_trash_runs_wait_then_acquire(self):
         attempting = threading.Event()
         acquired_second = threading.Event()
         result = []
@@ -14,7 +14,7 @@ class MaintenanceLeaseTests(unittest.TestCase):
         def second_run():
             attempting.set()
             with lease(
-                "Plex Two",
+                "Plex One",
                 operation="empty_trash",
                 queue_empty_trash=True,
                 wait_timeout=1,
@@ -46,7 +46,7 @@ class MaintenanceLeaseTests(unittest.TestCase):
         def empty_run():
             attempting.set()
             with lease(
-                "Plex Two", operation="empty_trash",
+                "Plex One", operation="empty_trash",
                 queue_empty_trash=True, wait_timeout=1,
             ) as outcome:
                 result.append(outcome)
@@ -64,14 +64,14 @@ class MaintenanceLeaseTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertEqual(result, [(True, "")])
 
-    def test_timestamp_repair_does_not_wait_for_empty_trash(self):
+    def test_timestamp_repair_conflicts_with_empty_trash_on_same_server(self):
         with lease(
             "Plex One",
             operation="empty_trash",
             queue_empty_trash=True,
         ) as empty_trash:
             self.assertTrue(empty_trash[0])
-            with lease("Plex Two", operation="timestamp_repair") as repair:
+            with lease("Plex One", operation="timestamp_repair") as repair:
                 self.assertFalse(repair[0])
                 self.assertIn("maintenance operation", repair[1])
 
@@ -83,13 +83,22 @@ class MaintenanceLeaseTests(unittest.TestCase):
         ) as first:
             self.assertTrue(first[0])
             with lease(
-                "Plex Two",
+                "Plex One",
                 operation="empty_trash",
                 queue_empty_trash=True,
                 wait_timeout=0,
             ) as second:
                 self.assertFalse(second[0])
                 self.assertIn("timed out", second[1])
+
+    def test_different_plex_servers_do_not_share_active_operation_lock(self):
+        with lease("Plex One", operation="timestamp_repair") as repair:
+            self.assertTrue(repair[0])
+            with lease(
+                "Plex Two", operation="empty_trash",
+                queue_empty_trash=True,
+            ) as empty_trash:
+                self.assertTrue(empty_trash[0])
 
     def test_recovery_blocks_only_owning_instance_for_empty_trash(self):
         def recovery_check(instance_name, operation):

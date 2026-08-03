@@ -5,7 +5,7 @@ from typing import Callable, Iterator, Optional
 
 
 _condition = threading.Condition()
-_active_operation: Optional[str] = None
+_active_operations: dict[str, str] = {}
 _recovery_check: Optional[Callable[[str, str], bool]] = None
 
 
@@ -29,7 +29,6 @@ def lease(instance_name: str, allow_recovery: bool = False,
     immediately on conflicts, keeping filesystem changes mutually exclusive
     with destructive work.
     """
-    global _active_operation
     if not allow_recovery and recovery_required(instance_name, operation):
         yield False, "timestamp repair recovery is required"
         return
@@ -38,10 +37,12 @@ def lease(instance_name: str, allow_recovery: bool = False,
     failure_reason = ""
     deadline = time.monotonic() + max(0, wait_timeout)
     with _condition:
-        while _active_operation is not None:
+        while instance_name in _active_operations:
             can_wait = queue_empty_trash and operation == "empty_trash"
             if not can_wait:
-                failure_reason = "another Plex maintenance operation is active"
+                failure_reason = (
+                    "another maintenance operation is active on this Plex server"
+                )
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -49,7 +50,7 @@ def lease(instance_name: str, allow_recovery: bool = False,
                 break
             _condition.wait(remaining)
         if not failure_reason:
-            _active_operation = operation
+            _active_operations[instance_name] = operation
             acquired = True
 
     if failure_reason:
@@ -64,5 +65,5 @@ def lease(instance_name: str, allow_recovery: bool = False,
     finally:
         if acquired:
             with _condition:
-                _active_operation = None
+                _active_operations.pop(instance_name, None)
                 _condition.notify_all()
