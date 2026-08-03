@@ -116,9 +116,15 @@ class TimestampRepairManager:
             }
         return None
 
-    def has_active_transaction(self, instance_name: str) -> bool:
+    def has_active_transaction(self, instance_name: str,
+                               operation: str = "maintenance") -> bool:
         active = self.active_transaction()
-        return bool(active)
+        if not active:
+            return False
+        if operation != "empty_trash":
+            return True
+        owner = str(active.get("instance", "")).strip()
+        return not owner or owner == "unknown" or owner == instance_name
 
     @staticmethod
     def _connect(database_path: str) -> sqlite3.Connection:

@@ -6,16 +6,16 @@ from typing import Callable, Iterator, Optional
 
 _condition = threading.Condition()
 _active_operation: Optional[str] = None
-_recovery_check: Optional[Callable[[str], bool]] = None
+_recovery_check: Optional[Callable[[str, str], bool]] = None
 
 
-def set_recovery_check(check: Callable[[str], bool]) -> None:
+def set_recovery_check(check: Callable[[str, str], bool]) -> None:
     global _recovery_check
     _recovery_check = check
 
 
-def recovery_required(instance_name: str) -> bool:
-    return bool(_recovery_check and _recovery_check(instance_name))
+def recovery_required(instance_name: str, operation: str) -> bool:
+    return bool(_recovery_check and _recovery_check(instance_name, operation))
 
 
 @contextmanager
@@ -24,13 +24,13 @@ def lease(instance_name: str, allow_recovery: bool = False,
           wait_timeout: float = 1800) -> Iterator[tuple[bool, str]]:
     """Acquire the global Plex maintenance lease.
 
-    Empty Trash runs may wait for another Empty Trash run so simultaneous
-    schedules are serialized instead of reported as safety failures. All other
-    maintenance conflicts fail immediately, keeping repair and recovery
-    mutually exclusive with destructive work.
+    Empty Trash runs wait for active maintenance so schedules are serialized
+    instead of reported as safety failures. Timestamp repair and recovery fail
+    immediately on conflicts, keeping filesystem changes mutually exclusive
+    with destructive work.
     """
     global _active_operation
-    if not allow_recovery and recovery_required(instance_name):
+    if not allow_recovery and recovery_required(instance_name, operation):
         yield False, "timestamp repair recovery is required"
         return
 
@@ -39,11 +39,7 @@ def lease(instance_name: str, allow_recovery: bool = False,
     deadline = time.monotonic() + max(0, wait_timeout)
     with _condition:
         while _active_operation is not None:
-            can_wait = (
-                queue_empty_trash
-                and operation == "empty_trash"
-                and _active_operation == "empty_trash"
-            )
+            can_wait = queue_empty_trash and operation == "empty_trash"
             if not can_wait:
                 failure_reason = "another Plex maintenance operation is active"
                 break
@@ -61,7 +57,7 @@ def lease(instance_name: str, allow_recovery: bool = False,
         return
 
     try:
-        if not allow_recovery and recovery_required(instance_name):
+        if not allow_recovery and recovery_required(instance_name, operation):
             yield False, "timestamp repair recovery is required"
         else:
             yield True, ""

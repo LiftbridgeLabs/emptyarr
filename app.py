@@ -91,7 +91,7 @@ _worker_signature_verifier = SignatureVerifier()
 _remote_repair_lock = threading.RLock()
 _remote_repair: dict = {}
 _worker_scan_contexts: dict[str, dict] = {}
-_worker_recovery_cache: dict[str, tuple[float, bool]] = {}
+_worker_recovery_cache: dict[str, tuple[float, str | None, bool]] = {}
 _metadata_audit_path = Path(CONFIG_PATH).resolve().parent / "metadata-audits.json"
 _metadata_audit_lock = threading.Lock()
 
@@ -963,7 +963,7 @@ def _worker_payload(instance, plex) -> dict:
     }
 
 
-def _remote_recovery_required() -> bool:
+def _remote_recovery_required(instance_name: str | None = None) -> bool:
     workers = {
         instance.timestamp_repair.worker
         for instance in config.instances
@@ -971,29 +971,58 @@ def _remote_recovery_required() -> bool:
         and instance.timestamp_repair.worker != "local"
     }
     now = time.monotonic()
+    if instance_name:
+        assigned = next((
+            instance for instance in config.instances
+            if instance.name == instance_name
+        ), None)
+        if (
+            not assigned
+            or not assigned.timestamp_repair.enabled
+            or assigned.timestamp_repair.worker == "local"
+        ):
+            return False
+        workers = {assigned.timestamp_repair.worker}
     for name in workers:
         cached = _worker_recovery_cache.get(name)
         if cached and now - cached[0] < 5:
-            if cached[1]:
+            active_instance, unverified = cached[1], cached[2]
+            if unverified or (
+                active_instance is not None
+                and (instance_name is None or active_instance in {"*", instance_name})
+            ):
                 return True
             continue
         worker = _repair_worker(name)
-        required = True
+        active_instance = None
+        unverified = True
         if worker:
             try:
                 status = RepairWorkerClient(worker, timeout=3).status()
-                required = bool(status.get("active_transaction"))
+                active = status.get("active_transaction")
+                active_instance = (
+                    str(active.get("instance", "")).strip() or "*"
+                    if isinstance(active, dict) else None
+                )
+                unverified = False
             except Exception:
                 # Fail closed: an unreachable worker could have renamed paths.
-                required = True
-        _worker_recovery_cache[name] = (now, required)
-        if required:
+                pass
+        _worker_recovery_cache[name] = (now, active_instance, unverified)
+        if unverified or (
+            active_instance is not None
+            and (instance_name is None or active_instance in {"*", instance_name})
+        ):
             return True
     return False
 
 
-def _combined_recovery_required(_instance_name: str) -> bool:
-    return timestamp_repair.has_active_transaction(_instance_name) or _remote_recovery_required()
+def _combined_recovery_required(instance_name: str,
+                                operation: str = "maintenance") -> bool:
+    scoped_instance = instance_name if operation == "empty_trash" else None
+    return timestamp_repair.has_active_transaction(
+        instance_name, operation,
+    ) or _remote_recovery_required(scoped_instance)
 
 
 set_recovery_check(_combined_recovery_required)

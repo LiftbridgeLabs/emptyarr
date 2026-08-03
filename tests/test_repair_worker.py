@@ -8,8 +8,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import app
-from src.config import (AppConfig, RepairWorkerConfig, TimestampRepairConfig,
-                        parse_config)
+from src.config import (AppConfig, PlexInstanceConfig, RepairWorkerConfig,
+                        TimestampRepairConfig, parse_config)
 from src.worker_auth import SignatureVerifier, signed_headers
 from worker import create_worker_app
 
@@ -270,6 +270,43 @@ class RepairWorkerControllerTests(unittest.TestCase):
         )), patch("app.RepairWorkerClient.status", side_effect=RuntimeError("offline")):
             app._worker_recovery_cache.clear()
             self.assertTrue(app._combined_recovery_required("anything"))
+
+    def test_remote_recovery_is_scoped_for_empty_trash_but_global_for_repairs(self):
+        worker = RepairWorkerConfig(
+            "altmount-worker", "http://worker:8223", "z" * 32,
+            "http://controller:8222",
+        )
+        remote = PlexInstanceConfig(
+            "vm-altmount", "http://plex", "token", [],
+            timestamp_repair=TimestampRepairConfig(
+                enabled=True, worker=worker.name,
+                database_path="/plex-db/db", allowed_prefixes=["/links"],
+            ),
+        )
+        local = PlexInstanceConfig(
+            "Streamstead", "http://local-plex", "token", [],
+            timestamp_repair=TimestampRepairConfig(enabled=False),
+        )
+        worker_status = {
+            "active_transaction": {
+                "instance": "vm-altmount", "state": "recovery_required",
+            },
+        }
+        with patch.object(app, "config", AppConfig(
+            instances=[local, remote], repair_workers=[worker],
+        )), patch(
+            "app.RepairWorkerClient.status", return_value=worker_status,
+        ):
+            app._worker_recovery_cache.clear()
+            self.assertFalse(app._combined_recovery_required(
+                "Streamstead", "empty_trash",
+            ))
+            self.assertTrue(app._combined_recovery_required(
+                "vm-altmount", "empty_trash",
+            ))
+            self.assertTrue(app._combined_recovery_required(
+                "Streamstead", "timestamp_repair",
+            ))
 
     def test_settings_render_worker_setup_without_config_file_editing(self):
         html = app.app.test_client().get("/").get_data(as_text=True)

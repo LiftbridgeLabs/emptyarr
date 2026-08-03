@@ -264,6 +264,23 @@ class TimestampRepairTransactionTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(self.manager.active_path.exists())
 
+    def test_saved_recovery_only_blocks_empty_trash_for_owning_instance(self):
+        transaction = {
+            "transaction_id": "tx", "instance": "Plex", "library": "Movies",
+            "state": "renamed", "renames": [],
+        }
+        self.manager._write_active(transaction)
+
+        self.assertTrue(self.manager.has_active_transaction(
+            "Plex", "empty_trash",
+        ))
+        self.assertFalse(self.manager.has_active_transaction(
+            "Other Plex", "empty_trash",
+        ))
+        self.assertTrue(self.manager.has_active_transaction(
+            "Other Plex", "timestamp_repair",
+        ))
+
     def test_active_transaction_blocks_empty_trash_before_health_checks(self):
         transaction = {
             "transaction_id": "tx", "instance": "Plex", "library": "Movies",
@@ -277,6 +294,28 @@ class TimestampRepairTransactionTests(unittest.TestCase):
 
         plex.check_reachable.assert_not_called()
         plex.empty_trash.assert_not_called()
+
+    def test_active_transaction_does_not_block_another_plex_instance(self):
+        transaction = {
+            "transaction_id": "tx", "instance": "Plex", "library": "Movies",
+            "state": "renamed", "renames": [],
+        }
+        self.manager._write_active(transaction)
+        other_library = LibraryConfig(
+            "Movies", "physical", [], section_id="2",
+        )
+        other_instance = PlexInstanceConfig(
+            "Other Plex", "http://other-plex", "token", [other_library],
+        )
+        plex = Mock()
+
+        with patch.object(runner, "_run_library") as execute:
+            runner.run_library(
+                other_instance, other_library,
+                AppConfig(instances=[other_instance]), plex, manual=True,
+            )
+
+        execute.assert_called_once()
 
 
 class TimestampRepairConfigTests(unittest.TestCase):
